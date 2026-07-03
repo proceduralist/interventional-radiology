@@ -1,0 +1,14 @@
+# Dev tooling / not needed to serve the static site
+agent/
+.agents/
+skills-lock.json
+node_modules/
+__pycache__/
+*.pyc
+.DS_Store
+
+# Test + local scratch (optional to exclude; keep if you want them in the repo)
+game/tests/
+
+# NOTE: js/config.js IS committed on purpose — it holds only the Supabase
+# publishable key, which is safe to expose; Row-Level Security enforces access.

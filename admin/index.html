@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>IR Casebook — Data Dashboard</title>
+  <link rel="icon" href="../assets/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="admin.css">
+</head>
+<body>
+  <header id="bar">
+    <div class="brand">IR Casebook <span>DATA DASHBOARD</span></div>
+    <div id="liveVersion" title="data_version — bumps on every content change; the game refetches when it changes">…</div>
+    <div id="userBox"></div>
+  </header>
+
+  <div id="wrap">
+    <nav id="nav"></nav>
+    <main id="panel"></main>
+  </div>
+
+  <div id="toast" hidden></div>
+
+  <!-- Pinned exact version per Supabase npm-security guidance -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.108.1/dist/umd/supabase.min.js"></script>
+  <script src="../js/config.js"></script>
+  <script src="admin.js"></script>
+</body>
+</html>

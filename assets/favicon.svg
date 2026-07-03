@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <rect width="32" height="32" rx="7" fill="#16303f"/>
+  <path d="M3 23 C 10 12, 23 10, 30 4 C 22 14, 12 19, 3 23 Z" fill="#a6ce39"/>
+  <text x="16" y="25" text-anchor="middle" font-size="12" font-weight="800" fill="#ffffff" font-family="system-ui, Arial, sans-serif">IR</text>
+</svg>

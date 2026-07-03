@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>The Academic IR RPG — Vertical Slice</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header id="topbar">
+    <a href="../index.html" class="back">← IR Casebook</a>
+    <span class="ttl">The Academic IR RPG <em>· vertical slice</em></span>
+    <span class="spacer"></span>
+    <span class="disc">Educational simulation · every clinical value is live from the Casebook database</span>
+  </header>
+
+  <main id="game-wrap">
+    <div id="game-root"></div>
+    <!-- HTML overlay (auth / EMR / angio / debrief) is injected here by ui.js -->
+  </main>
+
+  <!-- CDN deps -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/phaser/3.80.1/phaser.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <!-- shared site config (same Supabase project) -->
+  <script src="../js/config.js"></script>
+
+  <!-- game modules (order matters) -->
+  <script src="js/net.js"></script>
+  <script src="js/gamedata.js"></script>
+  <script src="js/patient.js"></script>
+  <script src="js/engine.js"></script>
+  <script src="js/econ.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/scenes.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>
