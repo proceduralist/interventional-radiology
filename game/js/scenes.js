@@ -12,24 +12,35 @@
   const TEXT = "#dfe6f2";
 
   // ----- shared helpers -----------------------------------------------------
+  // Portal interaction is EVENT-driven (keydown-E / keydown-ENTER), not
+  // JustDown polling — polling misses events around scene pause/resume and
+  // wedged the busy flag (found in browser playtest).
   function makePortals(scene, list) {
     scene._portals = list.map(p => Object.assign({}, p));
+    scene._near = null;
     scene._hint = scene.add.text(0, 0, "", { fontFamily: "monospace", fontSize: "13px", color: "#ffe08a", backgroundColor: "#000c", padding: { x: 6, y: 3 } })
       .setDepth(1e6).setVisible(false);
-    scene._eKey = scene.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.E);
+    const enter = () => {
+      if (scene.busy || !scene._near) return;
+      scene.busy = true;
+      scene.input.keyboard.resetKeys();
+      scene._near.onEnter();
+    };
+    scene.input.keyboard.on("keydown-E", enter);
+    scene.input.keyboard.on("keydown-ENTER", enter);
   }
   function updatePortals(scene) {
-    if (scene.busy) return;
+    if (scene.busy) { scene._hint.setVisible(false); return; }
     let near = null;
     for (const p of scene._portals) {
       if (Math.abs(scene.player.x - p.x) < p.w / 2 + 22 && Math.abs(scene.player.y - p.y) < p.h / 2 + 22) { near = p; break; }
     }
-    if (near) {
-      scene._hint.setText("▸ " + near.label + "   [E]").setPosition(scene.player.x - 40, scene.player.y - 52).setVisible(true);
-      if (Phaser.Input.Keyboard.JustDown(scene._eKey)) { scene.busy = true; near.onEnter(); }
-    } else scene._hint.setVisible(false);
+    scene._near = near;
+    if (near) scene._hint.setText("▸ " + near.label + "   [E]").setPosition(scene.player.x - 40, scene.player.y - 52).setVisible(true);
+    else scene._hint.setVisible(false);
   }
   function movePlayer(scene, speed) {
+    if (scene.busy) { scene.player.body.setVelocity(0, 0); return; }
     const c = scene.cursors, w = scene.wasd; let vx = 0, vy = 0;
     if (c.left.isDown || w.left.isDown) vx = -1; else if (c.right.isDown || w.right.isDown) vx = 1;
     if (c.up.isDown || w.up.isDown) vy = -1; else if (c.down.isDown || w.down.isDown) vy = 1;
@@ -165,16 +176,20 @@
       const mapBtn = this.add.text(950, 8, "🗺 MAP [M]", { fontFamily: "monospace", fontSize: "13px", color: "#ffe08a", backgroundColor: "#0e1420cc", padding: { x: 8, y: 5 } })
         .setOrigin(1, 0).setScrollFactor(0).setDepth(1e6).setInteractive({ useHandCursor: true });
 
+      // NB: the scene keeps running under the map overlay (busy flag stops
+      // movement/portals) — pausing here left stale keys in Phaser's queue
+      // and could wedge input on resume.
       const openMap = () => {
         if (this.busy) return;
-        this.busy = true; this.scene.pause();
+        this.busy = true;
+        this.input.keyboard.resetKeys();
         root.IRUI.CampusMap.show(W, { x: this.player.x, y: this.player.y }, {
-          onClose: () => { this.busy = false; this.scene.resume(); },
+          onClose: () => { this.busy = false; this.input.keyboard.resetKeys(); },
           onTravel: (id) => {
             const b = W.byId(id), d = W.doorFor(b);
             this.player.setPosition(d.x, d.y + 4);
             this.cameras.main.centerOn(d.x, d.y);
-            this.busy = false; this.scene.resume();
+            this.busy = false; this.input.keyboard.resetKeys();
             root.IRUI.toast("🚌 Campus shuttle → " + b.name);
           },
         });
@@ -265,7 +280,7 @@
     run(scene) {
       const B = S.bundle, DF = B.defense;
       const cfg = B.config.defense_rewards || {};
-      const resume = () => { root.IRUI.clear(); scene.busy = false; scene.scene.resume(); };
+      const resume = () => { root.IRUI.clear(); scene.busy = false; scene.input.keyboard.resetKeys(); };
       if (!DF || !DF.papers.length || !DF.templates.length) {
         scene.busy = false; root.IRUI.toast("No defense-linked paper published yet — check back after the next data entry session."); return;
       }
@@ -278,7 +293,6 @@
       const tiers = (B.config.clout_tiers && B.config.clout_tiers.tiers) || [];
       const tierFor = (clout) => { let t = tiers[0] || { name: "—" }; tiers.forEach(x => { if (clout >= x.min) t = x; }); return t; };
 
-      scene.scene.pause();
       const engine = root.IRDefense.create({
         paper, templates: DF.templates, archetypes: DF.archetypes,
         config: B.config, seed: (Math.random() * 2 ** 31) | 0,
@@ -362,10 +376,9 @@
       const idx = FLOOR_ORDER.indexOf(floor);
       const go = (f) => this.scene.restart({ floor: f });
       portals.push({ x: 240, y: 262, w: 70, h: 40, label: "Elevator", onEnter: () => {
-        this.scene.pause();
         root.IRUI.Elevator.show(floor, FLOOR_ORDER, FLOOR_INFO, {
           onPick: (f) => { root.IRUI.toast("🛗 " + FLOOR_INFO[f].title); go(f); },
-          onClose: () => { this.busy = false; this.scene.resume(); },
+          onClose: () => { this.busy = false; this.input.keyboard.resetKeys(); },
         });
       } });
       if (idx < FLOOR_ORDER.length - 1) {
@@ -381,8 +394,7 @@
       const refreshHud = () => this._hud.setText(FLOOR_INFO[floor].title + "\nFunds " + S.save.funds + " · Cases " + S.save.casesCompleted + " · Best " + S.save.bestScore);
       this._hud = hud(this, ""); this._refreshHud = refreshHud;
       const openOverlay = (fn) => {
-        this.scene.pause();
-        const close = () => { root.IRUI.clear(); this.busy = false; this.scene.resume(); refreshHud(); };
+        const close = () => { root.IRUI.clear(); this.busy = false; this.input.keyboard.resetKeys(); refreshHud(); };
         fn(close);
       };
       const persist = async () => {
@@ -451,12 +463,11 @@
   // Case flow: EMR → Angio → Debrief (overlay-driven). Pauses the Phaser hub.
   const CaseFlow = {
     run(scene) {
-      scene.scene.pause();
       const B = S.bundle;
       let seed = (Math.random() * 2 ** 31) | 0;
       let patient = root.IRPatient.generate(B.generator, seed);
 
-      const backToHub = () => { root.IRUI.clear(); scene.busy = false; scene.scene.resume(); if (scene._refreshHud) scene._refreshHud(); };
+      const backToHub = () => { root.IRUI.clear(); scene.busy = false; scene.input.keyboard.resetKeys(); if (scene._refreshHud) scene._refreshHud(); };
 
       const showEMR = () => root.IRUI.EMR.show(patient, B.procedure, {
         onReroll: () => { seed = (Math.random() * 2 ** 31) | 0; patient = root.IRPatient.generate(B.generator, seed); showEMR(); },

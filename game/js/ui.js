@@ -419,7 +419,9 @@
       s += '<text class="maplbl" x="' + px + '" y="' + (py + 3) + '" text-anchor="middle" font-size="1.8" fill="#ffb0b0">YOU</text>';
       s += "</svg>";
       wrap.innerHTML = s;
-      const onKey = (e) => { if (e.key === "Escape" || e.key.toLowerCase() === "m") close(); };
+      const onKey = (e) => {
+        if (e.key === "Escape" || e.key.toLowerCase() === "m") { e.stopPropagation(); e.preventDefault(); close(); }
+      };
       const close = (travelId) => {
         document.removeEventListener("keydown", onKey);
         clear();
@@ -538,7 +540,7 @@
       card.appendChild(el("h2", null, "🛗 Elevator"));
       card.appendChild(el("p", "sub", "Select a floor · [Esc] to stay"));
       const col = el("div", "elevfloors");
-      const onKey = (e) => { if (e.key === "Escape") close(); };
+      const onKey = (e) => { if (e.key === "Escape") { e.stopPropagation(); e.preventDefault(); close(); } };
       const close = (picked) => {
         document.removeEventListener("keydown", onKey);
         clear();
