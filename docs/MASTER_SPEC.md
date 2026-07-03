@@ -9,7 +9,7 @@
 One platform, two faces, one database:
 
 1. **IR Casebook (website)** — the existing public educational reference (51 procedures, cited), extended into a live, Supabase-backed database with an admin dashboard for structured literature entry.
-2. **The Academic IR RPG (game)** — a 2D top-down Boston-set tactical RPG in which every clinical number is drawn live from that same database.
+2. **The Academic IR RPG (game)** — a 2D top-down University of Massachusetts Chan Medical School, Worcester, MA-set tactical RPG in which every clinical number is drawn live from that same database.
 
 **The accuracy contract (non-negotiable):** nothing clinically presented as real is invented. Every value is tagged with a data class:
 
@@ -32,7 +32,7 @@ Ryan (physician) is the sole data-entry gate. No automated scraping of JVIR full
 5. Live Supabase backend from day one. Editing data on the website reflects in the game via a `data_version` stamp.
 6. Phased delivery P0–P4 (see §12).
 7. Complication library = universal set + procedure-specific sets, all DB rows with rates, citations, rescue actions.
-8. Player accounts immediately (Supabase Auth) for cross-device saves. Dashboard = single admin login (Ryan). Website remains a public educational resource. Boston is a stylized landmark map with T stations as fast travel. Contrast guardrail = Cigarroa V_max **plus** ACR Manual eGFR risk tiers.
+8. Player accounts immediately (Supabase Auth) for cross-device saves. Dashboard = single admin login (Ryan). Website remains a public educational resource. Contrast guardrail = Cigarroa V_max **plus** ACR Manual eGFR risk tiers.
 9. First playable case: **chest port placement** (already fully written on the site). Art: free CC0/free-license 16-bit asset packs. First game deliverable: vertical slice.
 
 ---
@@ -142,7 +142,7 @@ Green-room dossier = the actual `papers` row. Podium gauntlet spawns 3–5 criti
 
 ## 11. Overworld, economy, saves
 
-- **Boston (stylized, 16-bit):** hospital exterior in a Longwood-style medical district, Charles-esque riverfront, brownstone blocks, Seaport-style convention center, community clinic. **T stations = fast travel** (walk anywhere scenic, ride instantly). Interiors: 3rd-floor hub (call room = profile/achievements; lounge = case hints), inpatient ward (EMR at bedside), sim lab, procurement, angio suite.
+- **University of Massachusetts Chan Medical School, Worcester, MA (stylized, 16-bit):** the University Campus site plan (May 2025) rendered as a scrolling 80×100-tile world (32px tiles, camera follows the player) — Plantation St/Lake Ave/Belmont St street grid, Lake Quinsigamond, biotech park, quads, garages, helipad, and 21 campus buildings shown in 3/4 top-down (roof + south wall face). **Campus map = fast travel** (press M, click a building to ride the shuttle; walk anywhere scenic). Enterable buildings open interiors: UMass Memorial → 3rd-floor IR hub (inpatient ward EMR at bedside, angio suite, sim lab, procurement; call room/lounge planned); all others → lobby scenes with flavor + signposts for future arcs (Sherman auditorium → P3 conference, Lazare → research, ACC → outpatient clinic).
 - **Economy:** Hospital Funds (procedure payouts × score% × clout multiplier) and Academic Clout (defenses). Clout tiers: 0–50 Resident (baseline) / 51–150 Rising Researcher (1.2× payouts, faster procurement) / 151–300 KOL (matching grant, once per cycle) / 301+ Academic Chief (1.5×, instant supply chain). All DESIGN values in `game_config`.
 - **Saves:** Supabase Auth (email/password) from day one; 3 save slots; autosave on zone transitions and case completion; owner-only RLS.
 
@@ -153,10 +153,10 @@ Green-room dossier = the actual `papers` row. Podium gauntlet spawns 3–5 criti
 | Phase | Deliverable | Done when |
 |---|---|---|
 | **P0** | Supabase project + `schema.sql` applied; migration of 51 procedures; `/admin` dashboard (auth, procedure/paper/device/complication/generator editors); casebook reads DB w/ offline snapshot; chest-port fully game-ready (game params, vessel map, generator, devices, complications) | Ryan edits data on the site and `data_version` bumps; `v_game_ready` returns chest-port |
-| **P1** | Vertical slice: Boston micro-map + hospital hub + ward EMR + angio suite; chest-port playable start-to-debrief with accounts + saves | A stranger can create an account, round, place a port, and get a scored debrief with citations |
+| **P1** | Vertical slice: University of Massachusetts Chan Medical School, Worcester, MA map + hospital hub + ward EMR + angio suite; chest-port playable start-to-debrief with accounts + saves | A stranger can create an account, round, place a port, and get a scored debrief with citations |
 | **P2** | Sim lab (all 3 benches), procurement shop, economy loop | Buy → test → use loop closed |
 | **P3** | Conference defense, clout tiers, grants | Defense loop closed; clout modifies economy |
-| **P4+** | Procedure expansion as pure data entry; emergent pacing; more Boston zones; achievements | Each new game-ready procedure appears with zero code changes |
+| **P4+** | Procedure expansion as pure data entry; emergent pacing; more University of Massachusetts Chan Medical School, Worcester, MA zones; achievements | Each new game-ready procedure appears with zero code changes |
 
 ---
 

@@ -1,23 +1,21 @@
 /* IR RPG — Phaser scenes + case flow.
-   Boot (auth + data) → Overworld (stylized Boston, T fast-travel) → Hospital hub
-   (Ward EMR / Angio suite). Text-heavy screens are HTML overlays (see ui.js);
-   Phaser handles the navigable overworld/hub. Procedural placeholder art (no
-   external assets yet — see assets/CREDITS.md). window.IRScenes + window.IRState. */
+   Boot (auth + data) → Overworld (UMass Chan University Campus, Worcester —
+   a scrolling world larger than the screen; camera follows the player;
+   [M] opens the clickable campus map for shuttle fast-travel) → building
+   interiors: Hospital (IR floor hub) or Lobby (per-building flavor).
+   Text-heavy screens are HTML overlays (ui.js). All art is procedurally
+   generated pixel-style (world.js). window.IRScenes + window.IRState. */
 (function (root) {
   "use strict";
   const Phaser = root.Phaser;
-  const S = root.IRState = { user: null, guest: false, bundle: null, save: null, slot: 1 };
+  const S = root.IRState = { user: null, guest: false, bundle: null, save: null, slot: 1, lastDoor: null, seenIntro: false };
+  const TEXT = "#dfe6f2";
 
-  const COL = { bg: 0x0e1420, road: 0x1b2436, river: 0x1f3a5f, block: 0x24304a,
-    hosp: 0x8a1c2b, hospDoor: 0xf0c040, tstop: 0xd23b3b, ward: 0x2f6f4f, angio: 0x3a4a7a,
-    simlab: 0x6f5a2f, shop: 0x2f5a6f,
-    player: 0xf2f2f2, exit: 0x555f73, text: "#dfe6f2" };
-
-  // ----- proximity portals (shared helper) --------------------------------
+  // ----- shared helpers -----------------------------------------------------
   function makePortals(scene, list) {
     scene._portals = list.map(p => Object.assign({}, p));
-    scene._hint = scene.add.text(0, 0, "", { fontFamily: "monospace", fontSize: "13px", color: "#ffe08a", backgroundColor: "#0009", padding: { x: 6, y: 3 } })
-      .setDepth(50).setVisible(false);
+    scene._hint = scene.add.text(0, 0, "", { fontFamily: "monospace", fontSize: "13px", color: "#ffe08a", backgroundColor: "#000c", padding: { x: 6, y: 3 } })
+      .setDepth(1e6).setVisible(false);
     scene._eKey = scene.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.E);
   }
   function updatePortals(scene) {
@@ -27,24 +25,34 @@
       if (Math.abs(scene.player.x - p.x) < p.w / 2 + 22 && Math.abs(scene.player.y - p.y) < p.h / 2 + 22) { near = p; break; }
     }
     if (near) {
-      scene._hint.setText("▸ " + near.label + "   [E]").setPosition(scene.player.x - 40, scene.player.y - 46).setVisible(true);
+      scene._hint.setText("▸ " + near.label + "   [E]").setPosition(scene.player.x - 40, scene.player.y - 52).setVisible(true);
       if (Phaser.Input.Keyboard.JustDown(scene._eKey)) { scene.busy = true; near.onEnter(); }
     } else scene._hint.setVisible(false);
   }
   function movePlayer(scene, speed) {
     const c = scene.cursors, w = scene.wasd; let vx = 0, vy = 0;
-    if (c.left.isDown || w.left.isDown) vx = -speed;
-    else if (c.right.isDown || w.right.isDown) vx = speed;
-    if (c.up.isDown || w.up.isDown) vy = -speed;
-    else if (c.down.isDown || w.down.isDown) vy = speed;
-    scene.player.body.setVelocity(vx, vy);
+    if (c.left.isDown || w.left.isDown) vx = -1; else if (c.right.isDown || w.right.isDown) vx = 1;
+    if (c.up.isDown || w.up.isDown) vy = -1; else if (c.down.isDown || w.down.isDown) vy = 1;
+    if (vx && vy) { vx *= 0.7071; vy *= 0.7071; }
+    scene.player.body.setVelocity(vx * speed, vy * speed);
+    scene.player.setDepth(scene.player.y); // Y-sort: pass behind trees / props
   }
   function stdControls(scene) {
     scene.cursors = scene.input.keyboard.createCursorKeys();
     scene.wasd = scene.input.keyboard.addKeys({ up: "W", down: "S", left: "A", right: "D" });
   }
-  function label(scene, x, y, txt, size) {
-    return scene.add.text(x, y, txt, { fontFamily: "monospace", fontSize: (size || 12) + "px", color: COL.text }).setOrigin(0.5).setDepth(5);
+  function label(scene, x, y, txt, size, opts) {
+    return scene.add.text(x, y, txt, Object.assign({ fontFamily: "monospace", fontSize: (size || 12) + "px", color: TEXT, align: "center" }, opts || {})).setOrigin(0.5).setDepth(5);
+  }
+  function spawnPlayer(scene, x, y) {
+    scene.player = scene.physics.add.image(x, y, "t_player");
+    scene.player.body.setSize(14, 9).setOffset(3, 18); // feet-only body → walk "behind" things
+    scene.player.setCollideWorldBounds(true);
+    stdControls(scene);
+  }
+  function hud(scene, lines) {
+    return scene.add.text(10, 8, lines, { fontFamily: "monospace", fontSize: "12px", color: TEXT, backgroundColor: "#0e1420cc", padding: { x: 8, y: 5 } })
+      .setScrollFactor(0).setDepth(1e6);
   }
 
   // ======================================================================
@@ -53,7 +61,8 @@
     create() {
       this.cameras.main.setBackgroundColor("#0e1420");
       label(this, 480, 250, "The Academic IR RPG", 22);
-      const status = label(this, 480, 300, "Loading…", 13);
+      label(this, 480, 278, "UMass Chan Medical School · University Campus", 12).setAlpha(0.75);
+      const status = label(this, 480, 320, "Loading…", 13);
       this.input.keyboard.disableGlobalCapture();
       root.IRNet.init();
 
@@ -73,7 +82,6 @@
         } else {
           S.save = { funds: 0, clout: 0, casesCompleted: 0, bestScore: 0 };
         }
-        // P2: seed the starter supply-contract inventory (migrates old saves too)
         root.IREcon.ensureInventory(S.save, S.bundle.config);
         root.IRUI.clear();
         this.scene.start("Overworld");
@@ -93,72 +101,210 @@
   };
 
   // ======================================================================
+  //  OVERWORLD — scrolling UMass Chan campus
+  // ======================================================================
   const Overworld = {
     key: "Overworld",
-    create() {
+    create(data) {
+      const W = root.IRWorld, TILE = W.TILE;
       this.busy = false;
-      this.cameras.main.setBackgroundColor("#0e1420");
-      // river band (stylized Charles)
-      this.add.rectangle(480, 70, 960, 90, COL.river).setDepth(0);
-      label(this, 90, 70, "Charles R.", 11).setOrigin(0, 0.5).setAlpha(0.7);
-      // brownstone blocks
-      const blocks = [[170, 250], [330, 250], [650, 250], [810, 250], [170, 470], [810, 470]];
-      blocks.forEach(([x, y]) => { this.add.rectangle(x, y, 120, 90, COL.block).setStrokeStyle(2, 0x39466a); });
-      // roads
-      this.add.rectangle(480, 300, 960, 40, COL.road).setDepth(0);
-      this.add.rectangle(480, 300, 40, 620, COL.road).setDepth(0);
-      // hospital
-      this.add.rectangle(480, 470, 190, 120, COL.hosp).setStrokeStyle(3, 0xba2b3d);
-      label(this, 480, 440, "Longwood IR Hospital", 12);
-      this.add.rectangle(480, 520, 46, 24, COL.hospDoor);
-      // T station
-      this.add.circle(180, 360, 16, COL.tstop); label(this, 180, 360, "T", 14);
+      W.ensureTextures(this);
 
-      this.player = this.add.rectangle(300, 360, 20, 20, COL.player);
-      this.physics.add.existing(this.player);
-      this.player.body.setCollideWorldBounds(true);
-      this.physics.world.setBounds(0, 30, 960, 600);
-      stdControls(this);
+      // --- layered tilemap: background = terrain (grass/road/sidewalk/water)
+      const built = W.buildGrid();
+      const map = this.make.tilemap({ data: built.grid, tileWidth: TILE, tileHeight: TILE });
+      const tiles = map.addTilesetImage("tileset");
+      const ground = map.createLayer(0, tiles, 0, 0).setDepth(0);
+      ground.setCollision(W.T.WATER); // can't walk into the lake
 
-      label(this, 480, 600, "Arrow keys / WASD to walk · [E] to enter · The T is fast travel", 12).setAlpha(0.8);
-      const hud = label(this, 12, 44, "", 12).setOrigin(0, 0);
-      hud.setText("Funds " + S.save.funds + "  ·  " + (S.guest ? "guest (no save)" : (S.user.email || "resident")));
+      // helipad decal (walkable)
+      this.add.image(W.helipad.x * TILE, W.helipad.y * TILE, "t_helipad").setOrigin(0).setDepth(1);
+      label(this, (W.helipad.x + W.helipad.w / 2) * TILE, (W.helipad.y - 0.4) * TILE, "HELIPAD", 10).setAlpha(0.6).setDepth(1);
 
-      makePortals(this, [
-        { x: 480, y: 520, w: 60, h: 40, label: "Enter hospital", onEnter: () => this.scene.start("Hospital") },
-        { x: 180, y: 360, w: 40, h: 40, label: "Take the T to the hospital", onEnter: () => { this.busy = false; root.IRUI.toast("🚇 The Red Line whisks you to Longwood."); this.player.setPosition(480, 500); } },
-      ]);
+      // green / street / edge labels
+      W.greens.forEach(g => label(this, g.x * TILE, g.y * TILE, g.name, 11).setAlpha(0.55).setDepth(1));
+      W.signs.forEach(s => label(this, s.x * TILE + 60, s.y * TILE + 16, s.t, 12).setAlpha(0.85).setDepth(2));
+      W.roads.filter(r => r.h >= 3 || r.w >= 3).forEach(r => {
+        const horiz = r.w > r.h;
+        label(this, (r.x + (horiz ? 6 : r.w / 2)) * TILE, (r.y + (horiz ? r.h / 2 : 4)) * TILE, r.name, 10, horiz ? {} : { angle: 0 })
+          .setAlpha(0.5).setDepth(1).setAngle(horiz ? 0 : -90);
+      });
+      W.lots.forEach(l => label(this, (l.x + l.w / 2) * TILE, (l.y + l.h / 2) * TILE, l.name, 9).setAlpha(0.5).setDepth(1));
+
+      // --- midground: buildings (roof + south wall face, Y-sorted by base)
+      const solids = this.physics.add.staticGroup();
+      const shadows = this.add.graphics().setDepth(1);
+      const portals = [];
+      W.buildings.forEach(b => {
+        const key = "bld_" + b.id;
+        const px = b.x * TILE, py = b.y * TILE, f = W.footprint(b);
+        const baseY = (b.y + f.h) * TILE;
+        shadows.fillStyle(0x000000, 0.22).fillRect(px + 5, baseY - 3, f.w * TILE, 8);
+        this.add.image(px, py, key).setOrigin(0).setDepth(baseY);
+        const nm = label(this, px + f.w * TILE / 2, py - 6, b.name, b.major ? 12 : 10, { backgroundColor: "#0e142099", padding: { x: 4, y: 2 } });
+        nm.setDepth(baseY).setAlpha(b.major ? 0.95 : 0.7).setOrigin(0.5, 1);
+        const body = this.add.zone(px + f.w * TILE / 2, py + f.h * TILE / 2, f.w * TILE, f.h * TILE);
+        this.physics.add.existing(body, true); solids.add(body);
+        const d = W.doorFor(b);
+        if (b.enter) {
+          portals.push({ x: d.x, y: d.y, w: 70, h: 44, label: "Enter " + b.name, onEnter: () => {
+            S.lastDoor = { x: d.x, y: d.y + 6 };
+            this.scene.start(b.enter === "Hospital" ? "Hospital" : "Lobby", { id: b.id });
+          } });
+        } else if (b.lockedMsg) {
+          portals.push({ x: d.x, y: d.y, w: 70, h: 44, label: b.name, onEnter: () => { this.busy = false; root.IRUI.toast(b.lockedMsg); } });
+        }
+      });
+
+      // --- trees (Y-sorted, trunk-only collision)
+      W.treeList(built.grid, built.occ).forEach(t => {
+        const tx = (t.c + 0.5) * TILE, ty = (t.r + 1) * TILE;
+        this.add.image(tx, ty, "tree" + t.v).setOrigin(0.5, 1).setDepth(ty);
+        const trunk = this.add.zone(tx, ty - 6, 14, 10);
+        this.physics.add.existing(trunk, true); solids.add(trunk);
+      });
+
+      // --- player + camera follow across the whole campus
+      const sp = (data && data.spawn) || S.lastDoor || W.spawnDefault;
+      spawnPlayer(this, sp.x, sp.y);
+      this.physics.world.setBounds(0, 0, W.WPX, W.HPX);
+      this.physics.add.collider(this.player, solids);
+      this.physics.add.collider(this.player, ground);
+      this.cameras.main.setBounds(0, 0, W.WPX, W.HPX).startFollow(this.player, true, 0.15, 0.15).setBackgroundColor("#101724");
+
+      // --- HUD + campus map key
+      const who = S.guest ? "guest (no save)" : ((S.user && S.user.email) || "resident");
+      this._hud = hud(this, "");
+      const refreshHud = () => this._hud.setText("Funds " + S.save.funds + " · Cases " + S.save.casesCompleted + " · " + who + "\n[M] campus map · [E] enter · arrows/WASD walk");
+      refreshHud();
+      const mapBtn = this.add.text(950, 8, "🗺 MAP [M]", { fontFamily: "monospace", fontSize: "13px", color: "#ffe08a", backgroundColor: "#0e1420cc", padding: { x: 8, y: 5 } })
+        .setOrigin(1, 0).setScrollFactor(0).setDepth(1e6).setInteractive({ useHandCursor: true });
+
+      const openMap = () => {
+        if (this.busy) return;
+        this.busy = true; this.scene.pause();
+        root.IRUI.CampusMap.show(W, { x: this.player.x, y: this.player.y }, {
+          onClose: () => { this.busy = false; this.scene.resume(); },
+          onTravel: (id) => {
+            const b = W.byId(id), d = W.doorFor(b);
+            this.player.setPosition(d.x, d.y + 4);
+            this.cameras.main.centerOn(d.x, d.y);
+            this.busy = false; this.scene.resume();
+            root.IRUI.toast("🚌 Campus shuttle → " + b.name);
+          },
+        });
+      };
+      this.input.keyboard.on("keydown-M", openMap);
+      mapBtn.on("pointerdown", openMap);
+
+      makePortals(this, portals);
+      if (!S.seenIntro) { S.seenIntro = true; root.IRUI.toast("Welcome to the University Campus. Walk anywhere — or press [M] for the shuttle map.", 3500); }
     },
-    update() { movePlayer(this, 220); updatePortals(this); },
+    update() { movePlayer(this, 240); updatePortals(this); },
   };
 
+  // ======================================================================
+  //  LOBBY — generic interior for non-hospital buildings
+  // ======================================================================
+  const Lobby = {
+    key: "Lobby",
+    create(data) {
+      const W = root.IRWorld;
+      const b = W.byId(data && data.id) || W.buildings.find(x => x.enter === "Lobby");
+      this.busy = false;
+      W.ensureTextures(this); W.paintInterior(this);
+      this.cameras.main.setBackgroundColor("#0b1019").setBounds(0, 0, 960, 640);
+      this.physics.world.setBounds(112, 232, 736, 320);
+
+      const x0 = 96, y0 = 148, rw = 768, rh = 416;      // room rect
+      // floor + north wall face (front face visible per 3/4 perspective)
+      this.add.tileSprite(x0, y0 + 82, rw, rh - 82, "t_lino").setOrigin(0).setDepth(0);
+      this.add.tileSprite(x0, y0, rw, 82, "t_iwall").setOrigin(0).setDepth(1);
+      const frame = this.add.graphics().setDepth(2);
+      frame.fillStyle(0x1c2331, 1);
+      frame.fillRect(x0 - 10, y0 - 10, rw + 20, 10); frame.fillRect(x0 - 10, y0 + rh, rw + 20, 12);
+      frame.fillRect(x0 - 10, y0 - 10, 10, rh + 22); frame.fillRect(x0 + rw, y0 - 10, 10, rh + 22);
+      // wall windows + notice board
+      for (let wx = x0 + 40; wx < x0 + rw - 60; wx += 170) {
+        const wg = this.add.graphics().setDepth(2);
+        wg.fillStyle(0x16202e, 1).fillRect(wx, y0 + 18, 30, 40);
+        wg.fillStyle(0x9fc4e0, 0.8).fillRect(wx + 2, y0 + 20, 26, 6);
+        wg.fillStyle(0x6e7789, 1).fillRect(wx - 2, y0 + 58, 34, 3);
+      }
+      this.add.image(x0 + rw - 120, y0 + 14, "t_board").setOrigin(0).setDepth(3);
+
+      // title + blurb
+      label(this, 480, 92, b.name, 17).setDepth(10);
+      label(this, 480, 118, b.lobby.blurb, 11, { wordWrap: { width: 720 } }).setAlpha(0.8).setDepth(10);
+
+      // furniture (Y-sorted, solid)
+      const solids = this.physics.add.staticGroup();
+      const deskX = x0 + rw / 2 - 64, deskY = y0 + 86;
+      this.add.image(deskX, deskY, "t_desk").setOrigin(0).setDepth(deskY + 62);
+      const deskBody = this.add.zone(deskX + 64, deskY + 40, 128, 42);
+      this.physics.add.existing(deskBody, true); solids.add(deskBody);
+      [[x0 + 22, y0 + 96], [x0 + rw - 46, y0 + 96], [x0 + 22, y0 + rh - 44], [x0 + rw - 46, y0 + rh - 44]].forEach(([px, py]) => {
+        this.add.image(px, py, "t_plant").setOrigin(0, 1).setDepth(py);
+      });
+      for (let i = 0; i < 4; i++) this.add.image(x0 + 60 + i * 30, y0 + 200, "t_chair").setOrigin(0.5, 1).setDepth(y0 + 200);
+
+      // POI kiosks + exit
+      const portals = [];
+      const pois = b.lobby.pois || [];
+      pois.forEach((p, i) => {
+        const kx = x0 + rw * ((i + 1) / (pois.length + 1)), ky = y0 + 290;
+        this.add.image(kx, ky, "t_kiosk").setOrigin(0.5, 1).setDepth(ky);
+        label(this, kx, ky + 12, p.label, 10).setAlpha(0.75).setDepth(ky);
+        portals.push({ x: kx, y: ky - 10, w: 50, h: 40, label: p.label, onEnter: () => { this.busy = false; root.IRUI.toast(p.msg, 3200); } });
+      });
+      const door = this.add.graphics().setDepth(3);
+      door.fillStyle(0x20262e, 1).fillRect(444, y0 + rh - 8, 72, 20);
+      door.fillStyle(0x2a4a66, 1).fillRect(448, y0 + rh - 5, 30, 14).fillRect(482, y0 + rh - 5, 30, 14);
+      portals.push({ x: 480, y: y0 + rh, w: 90, h: 50, label: "Exit to campus", onEnter: () => this.scene.start("Overworld") });
+
+      spawnPlayer(this, 480, y0 + rh - 70);
+      this.physics.add.collider(this.player, solids);
+      hud(this, "[E] interact · exit at the bottom door");
+      makePortals(this, portals);
+    },
+    update() { movePlayer(this, 210); updatePortals(this); },
+  };
+
+  // ======================================================================
+  //  HOSPITAL — UMass Memorial, 3rd floor IR (gameplay hub)
   // ======================================================================
   const Hospital = {
     key: "Hospital",
     create() {
+      const W = root.IRWorld;
       this.busy = false;
-      this.cameras.main.setBackgroundColor("#121a28");
-      this.add.rectangle(480, 330, 720, 460, 0x18223a).setStrokeStyle(2, 0x2b3757);
-      label(this, 480, 120, "3rd Floor — Interventional Radiology", 16);
+      W.ensureTextures(this); W.paintInterior(this);
+      this.cameras.main.setBackgroundColor("#0b1019");
 
-      this.add.rectangle(250, 300, 150, 100, COL.ward).setStrokeStyle(2, 0x3f8f6f);
-      label(this, 250, 300, "Inpatient Ward\n(bedside EMR)", 12);
-      this.add.rectangle(710, 300, 150, 100, COL.angio).setStrokeStyle(2, 0x5a6fbf);
-      label(this, 710, 300, "Angio Suite", 12);
-      this.add.rectangle(250, 460, 150, 80, COL.simlab).setStrokeStyle(2, 0x9f8a4f);
-      label(this, 250, 460, "Sim Lab", 12);
-      this.add.rectangle(710, 460, 150, 80, COL.shop).setStrokeStyle(2, 0x4f8a9f);
-      label(this, 710, 460, "Procurement", 12);
-      this.add.rectangle(480, 520, 120, 44, COL.exit); label(this, 480, 520, "Exit → Boston", 11);
+      // floor + wall face
+      this.add.tileSprite(120, 150, 720, 440, "t_lino").setOrigin(0).setDepth(0);
+      this.add.tileSprite(120, 150, 720, 82, "t_iwall").setOrigin(0).setDepth(1);
+      const frame = this.add.graphics().setDepth(2);
+      frame.fillStyle(0x1c2331, 1);
+      frame.fillRect(110, 140, 740, 10); frame.fillRect(110, 590, 740, 12);
+      frame.fillRect(110, 140, 10, 462); frame.fillRect(840, 140, 10, 462);
+      label(this, 480, 110, "UMass Memorial Medical Center — 3rd Floor, Interventional Radiology", 15);
 
-      this.player = this.add.rectangle(480, 400, 20, 20, COL.player);
-      this.physics.add.existing(this.player);
-      this.player.body.setCollideWorldBounds(true);
-      this.physics.world.setBounds(60, 150, 840, 420);
-      stdControls(this);
-      const hud = label(this, 12, 20, "", 12).setOrigin(0, 0);
-      const refreshHud = () => hud.setText("Funds " + S.save.funds + "  ·  Cases " + S.save.casesCompleted + "  ·  Best " + S.save.bestScore);
-      refreshHud(); this._refreshHud = refreshHud;
+      const room = (x, y, w, h, color, stroke, txt) => {
+        this.add.rectangle(x, y, w, h, color, 0.92).setStrokeStyle(2, stroke).setDepth(3);
+        label(this, x, y, txt, 12).setDepth(4);
+      };
+      room(280, 320, 150, 100, 0x2f6f4f, 0x3f8f6f, "Inpatient Ward\n(bedside EMR)");
+      room(690, 320, 150, 100, 0x3a4a7a, 0x5a6fbf, "Angio Suite");
+      room(280, 480, 150, 80, 0x6f5a2f, 0x9f8a4f, "Sim Lab");
+      room(690, 480, 150, 80, 0x2f5a6f, 0x4f8a9f, "Procurement");
+      this.add.rectangle(480, 560, 120, 44, 0x555f73).setDepth(3); label(this, 480, 560, "Exit → Campus", 11).setDepth(4);
+      [[150, 240], [820, 240]].forEach(([px, py]) => this.add.image(px, py, "t_plant").setOrigin(0.5, 1).setDepth(py));
+
+      spawnPlayer(this, 480, 420);
+      this.physics.world.setBounds(130, 232, 700, 358);
+      const refreshHud = () => this._hud.setText("Funds " + S.save.funds + " · Cases " + S.save.casesCompleted + " · Best " + S.save.bestScore);
+      this._hud = hud(this, ""); refreshHud(); this._refreshHud = refreshHud;
 
       const openOverlay = (fn) => {
         this.scene.pause();
@@ -172,13 +318,13 @@
       };
 
       makePortals(this, [
-        { x: 250, y: 300, w: 150, h: 100, label: "Round on the next patient", onEnter: () => CaseFlow.run(this) },
-        { x: 710, y: 300, w: 150, h: 100, label: "Angio suite (round first)", onEnter: () => { this.busy = false; root.IRUI.toast("See the patient at the bedside first — round in the Ward."); } },
-        { x: 250, y: 460, w: 150, h: 80, label: "Practice in the Sim Lab", onEnter: () => openOverlay((close) =>
+        { x: 280, y: 320, w: 150, h: 100, label: "Round on the next patient", onEnter: () => CaseFlow.run(this) },
+        { x: 690, y: 320, w: 150, h: 100, label: "Angio suite (round first)", onEnter: () => { this.busy = false; root.IRUI.toast("See the patient at the bedside first — round in the Ward."); } },
+        { x: 280, y: 480, w: 150, h: 80, label: "Practice in the Sim Lab", onEnter: () => openOverlay((close) =>
             root.IRUI.SimLab.show({ save: S.save, devices: S.bundle.devices, config: S.bundle.config, configMeta: S.bundle.configMeta }, { onClose: close })) },
-        { x: 710, y: 460, w: 150, h: 80, label: "Procurement office", onEnter: () => openOverlay((close) =>
+        { x: 690, y: 480, w: 150, h: 80, label: "Procurement office", onEnter: () => openOverlay((close) =>
             root.IRUI.Shop.show({ save: S.save, devices: S.bundle.devices, config: S.bundle.config }, { onPurchase: () => persist(), onClose: close })) },
-        { x: 480, y: 520, w: 120, h: 44, label: "Head out to Boston", onEnter: () => this.scene.start("Overworld") },
+        { x: 480, y: 560, w: 120, h: 44, label: "Head out to campus", onEnter: () => this.scene.start("Overworld") },
       ]);
     },
     update() { movePlayer(this, 200); updatePortals(this); },
@@ -256,5 +402,5 @@
     },
   };
 
-  root.IRScenes = [Boot, Overworld, Hospital];
+  root.IRScenes = [Boot, Overworld, Lobby, Hospital];
 })(window);

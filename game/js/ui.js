@@ -404,5 +404,47 @@
     },
   };
 
-  root.IRUI = { overlay, clear, toast, Auth, EMR, Angio, Debrief, Shop, SimLab };
+  // --- Campus map (fast travel) --------------------------------------------
+  // Clickable SVG rendered from the same IRWorld layout data the overworld uses.
+  const CampusMap = {
+    show(W, playerPos, opts) {
+      const card = el("div", "card mapcard");
+      card.appendChild(el("h2", null, "UMass Chan — University Campus"));
+      card.appendChild(el("p", "sub", "Click a building to take the campus shuttle · [M] / [Esc] to close"));
+      const wrap = el("div", "mapwrap");
+      const hex = (c) => "#" + c.toString(16).padStart(6, "0");
+      let s = '<svg viewBox="0 0 80 100" xmlns="http://www.w3.org/2000/svg">';
+      s += '<rect x="0" y="0" width="80" height="100" fill="#152618"/>';
+      W.water.forEach(w => { s += '<rect x="' + w.x + '" y="' + w.y + '" width="' + w.w + '" height="' + w.h + '" fill="#1f3a5f"/>'; });
+      W.lots.forEach(l => { s += '<rect x="' + l.x + '" y="' + l.y + '" width="' + l.w + '" height="' + l.h + '" fill="#232b38"/>'; });
+      W.roads.forEach(r => { s += '<rect x="' + r.x + '" y="' + r.y + '" width="' + r.w + '" height="' + r.h + '" fill="#313947"/>'; });
+      s += '<circle cx="' + (W.helipad.x + W.helipad.w / 2) + '" cy="' + (W.helipad.y + W.helipad.h / 2) + '" r="2" fill="none" stroke="#8a919b" stroke-width="0.4"/>';
+      W.buildings.forEach(b => {
+        const f = W.footprint(b);
+        const fill = b.enter ? (b.kind === "hospital" ? "#a84a56" : b.kind === "clinical" ? "#3a7a8c" : "#41609f") : "#39404d";
+        s += '<rect x="' + f.x + '" y="' + f.y + '" width="' + f.w + '" height="' + f.h + '" rx="0.5" fill="' + fill + '" stroke="#0b1220" stroke-width="0.25"' +
+          (b.enter ? ' class="mapb" data-b="' + b.id + '"' : ' opacity="0.8"') + '><title>' + b.name + (b.enter ? " — click to travel" : "") + "</title></rect>";
+        if (b.major) s += '<text class="maplbl" x="' + (f.x + f.w / 2) + '" y="' + (f.y - 0.8) + '" text-anchor="middle" font-size="1.9" fill="#cfd8ea">' + (b.short || b.name) + "</text>";
+      });
+      const px = playerPos.x / W.TILE, py = playerPos.y / W.TILE;
+      s += '<circle class="youdot" cx="' + px + '" cy="' + py + '" r="1.1" fill="#ff5555" stroke="#fff" stroke-width="0.25"/>';
+      s += '<text class="maplbl" x="' + px + '" y="' + (py + 3) + '" text-anchor="middle" font-size="1.8" fill="#ffb0b0">YOU</text>';
+      s += "</svg>";
+      wrap.innerHTML = s;
+      const onKey = (e) => { if (e.key === "Escape" || e.key.toLowerCase() === "m") close(); };
+      const close = (travelId) => {
+        document.removeEventListener("keydown", onKey);
+        clear();
+        if (travelId) opts.onTravel(travelId); else opts.onClose();
+      };
+      wrap.querySelectorAll("[data-b]").forEach(r => { r.addEventListener("click", () => close(r.getAttribute("data-b"))); });
+      const btn = el("button", "btn ghost", "Close map");
+      btn.onclick = () => close();
+      card.append(wrap, btn);
+      document.addEventListener("keydown", onKey);
+      show(card);
+    },
+  };
+
+  root.IRUI = { overlay, clear, toast, Auth, EMR, Angio, Debrief, Shop, SimLab, CampusMap };
 })(window);
