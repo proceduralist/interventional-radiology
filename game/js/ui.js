@@ -434,6 +434,103 @@
     },
   };
 
+  // --- Conference defense (P3) ----------------------------------------------
+  // Green room (dossier = the literal papers row) → podium gauntlet → verdict.
+  const Conference = {
+    show(engine, meta, opts) {
+      const card = el("div", "card conf");
+      const render = (fn) => { card.innerHTML = ""; fn(); show(card); };
+
+      const credBar = () => {
+        const wrap = el("div", "credwrap");
+        wrap.appendChild(el("span", "credlbl", "CREDIBILITY"));
+        const bar = el("div", "credbar");
+        const fill = el("div", "credfill");
+        const pct = Math.max(0, engine.state.credibility);
+        fill.style.width = pct + "%";
+        fill.className = "credfill" + (pct < 50 ? " low" : "");
+        bar.appendChild(fill);
+        const num = el("span", "crednum", engine.state.credibility + "/" + engine.gauge.start);
+        wrap.append(bar, num);
+        return wrap;
+      };
+
+      const greenRoom = () => render(() => {
+        const d = engine.dossier();
+        card.appendChild(el("h2", null, "🎤 Green Room — dossier review"));
+        card.appendChild(el("p", "sub", "You present the data behind your program's chest-port service. Everything on this card is the literal published record — it is also the answer key."));
+        const box = el("div", "dossier");
+        box.appendChild(el("h3", null, d.title));
+        box.appendChild(el("p", "sub", d.journal + " (" + d.year + ") · PMID " + d.pmid + ' <span class="tag cited">CITED</span>'));
+        const dl = el("div", "doslines");
+        d.lines.forEach(([k, v]) => dl.appendChild(el("div", "dosline", "<b>" + k + ":</b> " + v)));
+        box.appendChild(dl);
+        if (d.exclusions.length) box.appendChild(el("div", "dosline", "<b>Exclusions:</b> " + d.exclusions.join(" · ")));
+        card.appendChild(box);
+        const row = el("div", "btnrow");
+        const go = el("button", "btn primary", "Take the podium (" + engine.questions.length + " questions)");
+        const back = el("button", "btn ghost", "Back out quietly");
+        go.onclick = () => podium();
+        back.onclick = () => opts.onClose();
+        row.append(go, back);
+        card.appendChild(row);
+      });
+
+      const podium = () => render(() => {
+        const q = engine.questions[engine.state.idx];
+        card.appendChild(el("h2", null, "🎤 Podium — question " + (engine.state.idx + 1) + " of " + engine.questions.length));
+        card.appendChild(credBar());
+        const critic = el("div", "critic");
+        critic.appendChild(el("div", "critic-name", q.archetype.name));
+        if (q.archetype.description) critic.appendChild(el("div", "critic-desc", q.archetype.description));
+        card.appendChild(critic);
+        card.appendChild(el("p", "confq", "“" + q.text + "”"));
+        const optsBox = el("div", "confopts");
+        q.options.forEach((o, i) => {
+          const b = el("button", "btn opt", o);
+          b.dataset.i = i;
+          b.onclick = () => {
+            const res = engine.answer(i);
+            [...optsBox.children].forEach((x, xi) => {
+              x.disabled = true;
+              if (xi === q.correctIdx) x.classList.add("right");
+              else if (xi === i) x.classList.add("wrong");
+            });
+            card.querySelector(".credfill").style.width = Math.max(0, res.credibility) + "%";
+            card.querySelector(".crednum").textContent = res.credibility + "/" + engine.gauge.start;
+            const msg = el("div", "confres " + (res.correct ? "okr" : "bad"),
+              res.correct ? "✓ The literal entered data. The critic sits down." :
+                "✗ The room murmurs. Correct answer: <b>" + res.answerText + "</b>");
+            card.appendChild(msg);
+            const next = el("button", "btn primary", res.done ? "Hear the verdict" : "Next question");
+            next.onclick = () => res.done ? verdictView() : podium();
+            card.appendChild(next);
+          };
+          optsBox.appendChild(b);
+        });
+        card.appendChild(optsBox);
+      });
+
+      const verdictView = () => render(() => {
+        const v = engine.verdict(meta.prior || 0);
+        card.appendChild(el("h2", null, v.ejected ? "🥀 Ejected from the podium" : "🏛 Verdict"));
+        card.appendChild(credBar());
+        const box = el("div", "dossier");
+        box.appendChild(el("div", "dosline", "<b>Answers:</b> " + v.correct + " / " + v.total + " correct"));
+        box.appendChild(el("div", "dosline", "<b>Academic Clout:</b> " + (v.clout >= 0 ? "+" : "") + v.clout +
+          (meta.prior ? " <em>(repeat presentation ×" + (meta.prior + 1) + " — diminishing returns)</em>" : "")));
+        if (meta.tierLine) box.appendChild(el("div", "dosline", "<b>Standing:</b> " + meta.tierLine(v)));
+        if (v.ejected) box.appendChild(el("div", "dosline bad", "Moderator: “We'll… move to the next abstract.” No rewards; word gets around."));
+        card.appendChild(box);
+        const done = el("button", "btn primary", "Leave the stage");
+        done.onclick = () => opts.onFinish(v);
+        card.appendChild(done);
+      });
+
+      greenRoom();
+    },
+  };
+
   // --- Hospital elevator ----------------------------------------------------
   const Elevator = {
     show(current, order, info, opts) {
@@ -462,5 +559,5 @@
     },
   };
 
-  root.IRUI = { overlay, clear, toast, Auth, EMR, Angio, Debrief, Shop, SimLab, CampusMap, Elevator };
+  root.IRUI = { overlay, clear, toast, Auth, EMR, Angio, Debrief, Shop, SimLab, CampusMap, Elevator, Conference };
 })(window);

@@ -240,7 +240,10 @@
         const kx = x0 + rw * ((i + 1) / (pois.length + 1)), ky = y0 + 290;
         this.add.image(kx, ky, "t_kiosk").setOrigin(0.5, 1).setDepth(ky);
         label(this, kx, ky + 12, p.label, 10).setAlpha(0.75).setDepth(ky);
-        portals.push({ x: kx, y: ky - 10, w: 50, h: 40, label: p.label, onEnter: () => { this.busy = false; root.IRUI.toast(p.msg, 3200); } });
+        const onEnter = p.action === "conference"
+          ? () => Conference.run(this)
+          : () => { this.busy = false; root.IRUI.toast(p.msg, 3200); };
+        portals.push({ x: kx, y: ky - 10, w: 50, h: 40, label: p.label, onEnter });
       });
       const door = this.add.graphics().setDepth(3);
       door.fillStyle(0x20262e, 1).fillRect(444, y0 + rh - 8, 72, 20);
@@ -253,6 +256,62 @@
       makePortals(this, portals);
     },
     update() { movePlayer(this, 210); updatePortals(this); },
+  };
+
+  // ======================================================================
+  //  CONFERENCE — podium defense in the Sherman Center auditorium (P3).
+  //  Dossier + answer key = the literal papers row (accuracy contract).
+  const Conference = {
+    run(scene) {
+      const B = S.bundle, DF = B.defense;
+      const cfg = B.config.defense_rewards || {};
+      const resume = () => { root.IRUI.clear(); scene.busy = false; scene.scene.resume(); };
+      if (!DF || !DF.papers.length || !DF.templates.length) {
+        scene.busy = false; root.IRUI.toast("No defense-linked paper published yet — check back after the next data entry session."); return;
+      }
+      if ((S.save.casesCompleted || 0) < (cfg.min_cases_to_present || 1)) {
+        scene.busy = false; root.IRUI.toast("You have no results to present — complete a case at UMass Memorial first."); return;
+      }
+      const paper = DF.papers[0];
+      S.save.defenses = S.save.defenses || {};
+      const prior = S.save.defenses[paper.id] || 0;
+      const tiers = (B.config.clout_tiers && B.config.clout_tiers.tiers) || [];
+      const tierFor = (clout) => { let t = tiers[0] || { name: "—" }; tiers.forEach(x => { if (clout >= x.min) t = x; }); return t; };
+
+      scene.scene.pause();
+      const engine = root.IRDefense.create({
+        paper, templates: DF.templates, archetypes: DF.archetypes,
+        config: B.config, seed: (Math.random() * 2 ** 31) | 0,
+      });
+      root.IRUI.Conference.show(engine, {
+        prior,
+        tierLine: (v) => {
+          const t = tierFor(Math.max(0, (S.save.clout || 0) + v.clout));
+          return t.name + " (clout " + Math.max(0, (S.save.clout || 0) + v.clout) + ", payouts ×" + (t.payout_mult || 1) + ")";
+        },
+      }, {
+        onClose: resume,
+        onFinish: async (v) => {
+          const before = tierFor(S.save.clout || 0);
+          S.save.clout = Math.max(0, (S.save.clout || 0) + v.clout);
+          if (!v.ejected) S.save.defenses[paper.id] = prior + 1;
+          const after = tierFor(S.save.clout);
+          let grantMsg = "";
+          if (after.matching_grant && !S.save.grantClaimed && !v.ejected) {
+            const g = Math.min(S.save.funds || 0, cfg.matching_grant_cap || 5000);
+            if (g > 0) { S.save.funds += g; S.save.grantClaimed = true; grantMsg = " 💰 KOL matching grant: +" + g + " funds."; }
+          }
+          if (!S.guest && S.user) {
+            try { S.save.updatedAt = new Date().toISOString(); await root.IRNet.writeSlot(S.slot, S.save); }
+            catch (e) { root.IRUI.toast("Save failed: " + (e.message || e)); }
+          }
+          resume();
+          root.IRUI.toast(v.ejected
+            ? "🥀 Ejected. Clout " + v.clout + ". The moderator avoids eye contact."
+            : "🏛 " + (before.name !== after.name ? "PROMOTED: " + after.name + "! " : "") + "+" + v.clout + " clout." + grantMsg, 4200);
+        },
+      });
+    },
   };
 
   // ======================================================================

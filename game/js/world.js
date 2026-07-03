@@ -43,7 +43,7 @@
         [{ label: "Phlebotomy queue", msg: "Now serving ticket 47. You are holding ticket 112." }]) },
     sherman: { name: "Albert Sherman Center", kind: "research", enter: "Lobby", major: true, short: "SHERMAN",
       lobby: lob("Albert Sherman Center — 11 floors of research and education. The skybridge to the Medical School is the fastest indoor route on campus.",
-        [{ label: "Auditorium", msg: "Dark and empty. Academic conference sim — coming in P3." },
+        [{ label: "Auditorium — present your work", action: "conference" },
          { label: "Cafe", msg: "You buy a coffee. It is somehow both burnt and weak. Morale +1 anyway." }]) },
     msb: { name: "Medical School Building", kind: "edu", enter: "Lobby", major: true, short: "MED SCHOOL",
       lobby: lob("Medical School Building — lecture halls, the library, and a brutalist amount of concrete. A corridor connects directly into the hospital.",

@@ -153,3 +153,28 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--text);
 .elevfloors{display:flex;flex-direction:column;gap:8px;margin:10px 0}
 .elevfloors .btn{width:100%;text-align:left}
 .elevfloors .btn b{display:inline-block;width:1.4em}
+
+/* conference defense */
+.card.conf{max-width:620px}
+.dossier{background:#0e1522;border:1px solid var(--line);border-radius:8px;padding:12px 14px;margin:10px 0;text-align:left}
+.dossier h3{margin:.1em 0 .3em;font-size:15px}
+.doslines{display:grid;grid-template-columns:1fr 1fr;gap:4px 14px;margin:8px 0}
+.dosline{font-size:13px;line-height:1.45}
+.dosline.bad{color:#ff9a9a}
+.credwrap{display:flex;align-items:center;gap:8px;margin:6px 0 10px}
+.credlbl{font-size:10px;letter-spacing:.12em;opacity:.7}
+.credbar{flex:1;height:12px;background:#0c1220;border:1px solid var(--line);border-radius:6px;overflow:hidden}
+.credfill{height:100%;background:linear-gradient(90deg,#3fa46a,#7fc98a);transition:width .4s}
+.credfill.low{background:linear-gradient(90deg,#a43f3f,#c97f7f)}
+.crednum{font-size:12px;opacity:.8;min-width:52px;text-align:right}
+.critic{background:#141c2e;border-left:3px solid #b8893a;border-radius:6px;padding:8px 12px;margin:8px 0;text-align:left}
+.critic-name{font-weight:700;font-size:13px}
+.critic-desc{font-size:11px;opacity:.7}
+.confq{font-style:italic;font-size:14.5px;text-align:left;margin:10px 2px}
+.confopts{display:flex;flex-direction:column;gap:8px;margin:10px 0}
+.confopts .opt{width:100%;text-align:left}
+.confopts .opt.right{outline:2px solid #3fa46a;background:#12301f}
+.confopts .opt.wrong{outline:2px solid #a43f3f;background:#301212}
+.confres{border-radius:6px;padding:8px 12px;margin:8px 0;font-size:13px;text-align:left}
+.confres.okr{background:#12301f}
+.confres.bad{background:#301212}

@@ -24,6 +24,19 @@
     const vm = await rest("vessel_maps?select=*&id=eq." + params[0].vessel_map_id);
     // devices referenced by the case (required_devices classes + step devices)
     const devs = await rest("devices?select=*&status=eq.published");
+    // P3 conference defense: linked papers + archetypes + question templates
+    const links = await rest("procedure_papers?select=paper_id,role&procedure_id=eq." + procedureId);
+    let defense = { papers: [], archetypes: [], templates: [] };
+    if (links.length) {
+      const ids = [...new Set(links.map(l => l.paper_id))].join(",");
+      const [papers, archetypes, templates] = await Promise.all([
+        rest("papers?select=*&id=in.(" + ids + ")&status=eq.published"),
+        rest("npc_archetypes?select=*"),
+        rest("defense_question_templates?select=*&status=eq.published"),
+      ]);
+      defense = { papers, archetypes,
+        templates: templates.filter(t => t.paper_id == null || papers.some(p => p.id === t.paper_id)) };
+    }
     const config = {}, configMeta = {};
     for (const r of cfg) {
       config[r.key] = r.value;
@@ -32,7 +45,7 @@
     }
     return {
       procedure: proc[0], params: params[0], vesselMap: vm[0],
-      generator: gens[0], complications: comps, devices: devs, config, configMeta,
+      generator: gens[0], complications: comps, devices: devs, config, configMeta, defense,
     };
   }
 
