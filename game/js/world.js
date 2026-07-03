@@ -315,60 +315,98 @@
   }
 
   function paintInterior(scene) {
-    if (scene.textures.exists("t_lino")) return;
-    let g = scene.make.graphics({ add: false });
-    const rnd = mulberry32(99);
-    g.fillStyle(0xb9bdc3, 1); g.fillRect(0, 0, 32, 32);
-    g.fillStyle(0xa4a8ae, 1); g.fillRect(0, 0, 32, 1); g.fillRect(0, 0, 1, 32);
-    for (let i = 0; i < 8; i++) { g.fillStyle(rnd() < .5 ? 0xaeb2b8 : 0xc4c8ce, 1); g.fillRect(Math.floor(rnd() * 30), Math.floor(rnd() * 30), 2, 1); }
-    g.fillStyle(0xdde1e6, 0.55); g.fillRect(6, 4, 10, 2); g.fillRect(18, 20, 8, 2); // linoleum sheen
-    g.generateTexture("t_lino", 32, 32); g.destroy();
-    // interior wall face (tileable strip, 32×96)
-    g = scene.make.graphics({ add: false });
-    g.fillStyle(0x3a4150, 1); g.fillRect(0, 0, 32, 12);
-    g.fillStyle(0x596273, 1); g.fillRect(0, 12, 32, 60);
-    g.fillStyle(0x6e7789, 1); g.fillRect(0, 52, 32, 2);
-    g.fillStyle(0x4a5262, 1); g.fillRect(0, 54, 32, 18);
-    g.fillStyle(0x2b303c, 1); g.fillRect(0, 72, 32, 6);
-    g.fillStyle(0x000000, 0.22); g.fillRect(0, 78, 32, 4);
-    g.generateTexture("t_iwall", 32, 82); g.destroy();
-    // reception desk (front + top faces)
-    g = scene.make.graphics({ add: false });
-    g.fillStyle(0x000000, 0.25); g.fillRect(4, 56, 124, 6);
-    g.fillStyle(0x9a7a56, 1); g.fillRect(0, 0, 128, 22);
-    g.fillStyle(0xb08c62, 1); g.fillRect(0, 0, 128, 3);
-    g.fillStyle(0x6d5238, 1); g.fillRect(0, 22, 128, 36);
-    for (let x = 6; x < 122; x += 24) { g.fillStyle(0x5d4630, 1); g.fillRect(x, 27, 16, 26); }
-    g.fillStyle(0xdfe3e8, 1); g.fillRect(50, 4, 16, 11); g.fillStyle(0x69a7d2, 1); g.fillRect(51, 5, 14, 8); // monitor
-    g.generateTexture("t_desk", 128, 62); g.destroy();
-    // potted plant
-    g = scene.make.graphics({ add: false });
-    g.fillStyle(0x000000, 0.22); g.fillEllipse(12, 33, 18, 5);
-    g.fillStyle(0x7a4a3a, 1); g.fillRect(6, 24, 12, 9); g.fillStyle(0x5d3529, 1); g.fillRect(6, 30, 12, 3);
-    g.fillStyle(0x2f5d33, 1); g.fillCircle(12, 15, 9); g.fillStyle(0x3b7440, 1); g.fillCircle(7, 11, 5); g.fillCircle(17, 12, 5); g.fillStyle(0x4f8f52, 1); g.fillCircle(12, 8, 4);
-    g.generateTexture("t_plant", 24, 36); g.destroy();
-    // waiting chair
-    g = scene.make.graphics({ add: false });
-    g.fillStyle(0x000000, 0.2); g.fillEllipse(10, 24, 16, 4);
-    g.fillStyle(0x33506e, 1); g.fillRect(2, 2, 16, 8);
-    g.fillStyle(0x3f5d7d, 1); g.fillRect(2, 10, 16, 7);
-    g.fillStyle(0x22303e, 1); g.fillRect(3, 17, 3, 6); g.fillRect(14, 17, 3, 6);
-    g.generateTexture("t_chair", 20, 26); g.destroy();
-    // info kiosk (for POIs)
-    g = scene.make.graphics({ add: false });
-    g.fillStyle(0x000000, 0.22); g.fillEllipse(11, 30, 16, 4);
-    g.fillStyle(0x4a5262, 1); g.fillRect(9, 12, 4, 17);
-    g.fillStyle(0x2b303c, 1); g.fillRect(1, 0, 20, 14);
-    g.fillStyle(0x69d2e7, 1); g.fillRect(3, 2, 16, 10); g.fillStyle(0xffffff, 0.85); g.fillRect(5, 4, 8, 2); g.fillRect(5, 8, 12, 1);
-    g.generateTexture("t_kiosk", 22, 32); g.destroy();
-    // notice board
-    g = scene.make.graphics({ add: false });
-    g.fillStyle(0x5a4632, 1); g.fillRect(0, 0, 72, 44);
-    g.fillStyle(0xa8895c, 1); g.fillRect(3, 3, 66, 38);
-    const cols = [0xf2efe6, 0xd7e6f2, 0xf2e6b8, 0xe6d2d2];
-    const r2 = mulberry32(5);
-    for (let i = 0; i < 6; i++) { const x = 6 + Math.floor(r2() * 52), y = 6 + Math.floor(r2() * 24); g.fillStyle(cols[i % 4], 1); g.fillRect(x, y, 9, 11); g.fillStyle(0x9aa0a8, 1); g.fillRect(x + 1, y + 3, 7, 1); g.fillRect(x + 1, y + 6, 5, 1); }
-    g.generateTexture("t_board", 72, 44); g.destroy();
+    const tex = (key, w, h, fn) => {
+      if (scene.textures.exists(key)) return;
+      const g = scene.make.graphics({ add: false });
+      fn(g); g.generateTexture(key, w, h); g.destroy();
+    };
+    tex("t_lino", 32, 32, (g) => {
+      const rnd = mulberry32(99);
+      g.fillStyle(0xb9bdc3, 1); g.fillRect(0, 0, 32, 32);
+      g.fillStyle(0xa4a8ae, 1); g.fillRect(0, 0, 32, 1); g.fillRect(0, 0, 1, 32);
+      for (let i = 0; i < 8; i++) { g.fillStyle(rnd() < .5 ? 0xaeb2b8 : 0xc4c8ce, 1); g.fillRect(Math.floor(rnd() * 30), Math.floor(rnd() * 30), 2, 1); }
+      g.fillStyle(0xdde1e6, 0.55); g.fillRect(6, 4, 10, 2); g.fillRect(18, 20, 8, 2); // linoleum sheen
+    });
+    tex("t_iwall", 32, 82, (g) => { // interior wall face (tileable strip)
+      g.fillStyle(0x3a4150, 1); g.fillRect(0, 0, 32, 12);
+      g.fillStyle(0x596273, 1); g.fillRect(0, 12, 32, 60);
+      g.fillStyle(0x6e7789, 1); g.fillRect(0, 52, 32, 2);
+      g.fillStyle(0x4a5262, 1); g.fillRect(0, 54, 32, 18);
+      g.fillStyle(0x2b303c, 1); g.fillRect(0, 72, 32, 6);
+      g.fillStyle(0x000000, 0.22); g.fillRect(0, 78, 32, 4);
+    });
+    tex("t_desk", 128, 62, (g) => { // reception desk (front + top faces)
+      g.fillStyle(0x000000, 0.25); g.fillRect(4, 56, 124, 6);
+      g.fillStyle(0x9a7a56, 1); g.fillRect(0, 0, 128, 22);
+      g.fillStyle(0xb08c62, 1); g.fillRect(0, 0, 128, 3);
+      g.fillStyle(0x6d5238, 1); g.fillRect(0, 22, 128, 36);
+      for (let x = 6; x < 122; x += 24) { g.fillStyle(0x5d4630, 1); g.fillRect(x, 27, 16, 26); }
+      g.fillStyle(0xdfe3e8, 1); g.fillRect(50, 4, 16, 11); g.fillStyle(0x69a7d2, 1); g.fillRect(51, 5, 14, 8); // monitor
+    });
+    tex("t_plant", 24, 36, (g) => {
+      g.fillStyle(0x000000, 0.22); g.fillEllipse(12, 33, 18, 5);
+      g.fillStyle(0x7a4a3a, 1); g.fillRect(6, 24, 12, 9); g.fillStyle(0x5d3529, 1); g.fillRect(6, 30, 12, 3);
+      g.fillStyle(0x2f5d33, 1); g.fillCircle(12, 15, 9); g.fillStyle(0x3b7440, 1); g.fillCircle(7, 11, 5); g.fillCircle(17, 12, 5); g.fillStyle(0x4f8f52, 1); g.fillCircle(12, 8, 4);
+    });
+    tex("t_chair", 20, 26, (g) => {
+      g.fillStyle(0x000000, 0.2); g.fillEllipse(10, 24, 16, 4);
+      g.fillStyle(0x33506e, 1); g.fillRect(2, 2, 16, 8);
+      g.fillStyle(0x3f5d7d, 1); g.fillRect(2, 10, 16, 7);
+      g.fillStyle(0x22303e, 1); g.fillRect(3, 17, 3, 6); g.fillRect(14, 17, 3, 6);
+    });
+    tex("t_kiosk", 22, 32, (g) => { // info kiosk (for POIs)
+      g.fillStyle(0x000000, 0.22); g.fillEllipse(11, 30, 16, 4);
+      g.fillStyle(0x4a5262, 1); g.fillRect(9, 12, 4, 17);
+      g.fillStyle(0x2b303c, 1); g.fillRect(1, 0, 20, 14);
+      g.fillStyle(0x69d2e7, 1); g.fillRect(3, 2, 16, 10); g.fillStyle(0xffffff, 0.85); g.fillRect(5, 4, 8, 2); g.fillRect(5, 8, 12, 1);
+    });
+    tex("t_board", 72, 44, (g) => { // notice board
+      g.fillStyle(0x5a4632, 1); g.fillRect(0, 0, 72, 44);
+      g.fillStyle(0xa8895c, 1); g.fillRect(3, 3, 66, 38);
+      const cols = [0xf2efe6, 0xd7e6f2, 0xf2e6b8, 0xe6d2d2];
+      const r2 = mulberry32(5);
+      for (let i = 0; i < 6; i++) { const x = 6 + Math.floor(r2() * 52), y = 6 + Math.floor(r2() * 24); g.fillStyle(cols[i % 4], 1); g.fillRect(x, y, 9, 11); g.fillStyle(0x9aa0a8, 1); g.fillRect(x + 1, y + 3, 7, 1); g.fillRect(x + 1, y + 6, 5, 1); }
+    });
+    tex("t_bed", 36, 56, (g) => { // hospital bed (head at top, front face at foot)
+      g.fillStyle(0x000000, 0.22); g.fillRect(2, 50, 34, 5);
+      g.fillStyle(0x4a5262, 1); g.fillRect(0, 0, 36, 8);           // headboard
+      g.fillStyle(0x6e7789, 1); g.fillRect(0, 0, 36, 2);
+      g.fillStyle(0xe8eaee, 1); g.fillRect(2, 8, 32, 36);          // mattress
+      g.fillStyle(0xf7f8fa, 1); g.fillRect(6, 10, 24, 8);          // pillow
+      g.fillStyle(0xc9ccd2, 1); g.fillRect(6, 17, 24, 1);
+      g.fillStyle(0x4a8a8c, 1); g.fillRect(2, 22, 32, 22);         // blanket
+      g.fillStyle(0x5fa3a5, 1); g.fillRect(2, 22, 32, 3);          // fold
+      g.fillStyle(0x3a6f71, 1); g.fillRect(2, 41, 32, 3);
+      g.fillStyle(0x4a5262, 1); g.fillRect(0, 44, 36, 8);          // footboard front face
+      g.fillStyle(0x2b303c, 1); g.fillRect(0, 50, 36, 2);
+    });
+    tex("t_carm", 56, 62, (g) => { // C-arm (angio suite flavor)
+      g.fillStyle(0x000000, 0.22); g.fillEllipse(28, 57, 40, 7);
+      g.fillStyle(0x39404d, 1); g.fillRect(18, 42, 22, 14);        // base
+      g.fillStyle(0x4a5262, 1); g.fillRect(18, 42, 22, 3);
+      g.fillStyle(0x596273, 1); g.fillRect(25, 28, 8, 16);         // column
+      g.lineStyle(6, 0xd3d7dd, 1);
+      g.beginPath(); g.arc(28, 22, 16, Math.PI * 0.75, Math.PI * 2.25, false); g.strokePath(); // the C
+      g.fillStyle(0x2b303c, 1); g.fillRect(12, 2, 14, 10);         // detector
+      g.fillStyle(0x2b303c, 1); g.fillRect(14, 32, 12, 8);         // tube
+      g.fillStyle(0x69d2e7, 1); g.fillRect(42, 8, 3, 3);           // status LED
+    });
+    tex("t_elev", 60, 76, (g) => { // elevator doors (mounted on the wall face)
+      g.fillStyle(0x2b303c, 1); g.fillRect(0, 0, 60, 76);
+      g.fillStyle(0x6e7789, 1); g.fillRect(2, 2, 56, 72);
+      g.fillStyle(0x9ba1a9, 1); g.fillRect(6, 12, 22, 58); g.fillRect(32, 12, 22, 58); // panels
+      g.fillStyle(0xc4c9cf, 1); g.fillRect(6, 12, 22, 3); g.fillRect(32, 12, 22, 3);
+      g.fillStyle(0x14181e, 1); g.fillRect(28, 12, 4, 58);         // seam
+      g.fillStyle(0x14181e, 1); g.fillRect(20, 3, 20, 7);          // floor display
+      g.fillStyle(0xe0693a, 1); g.fillRect(27, 5, 6, 3);
+    });
+    tex("t_stairs", 64, 76, (g) => { // stairwell alcove
+      g.fillStyle(0x1c222d, 1); g.fillRect(0, 0, 64, 76);
+      const shades = [0x39404d, 0x454d5c, 0x525a6a, 0x5f6879, 0x6c7688];
+      shades.forEach((c, i) => { g.fillStyle(c, 1); g.fillRect(6, 66 - i * 13, 52, 13); });
+      g.fillStyle(0x8a919b, 1); g.fillRect(6, 10, 52, 3);          // railing
+      g.fillStyle(0x8a919b, 1); g.fillRect(6, 10, 3, 60); g.fillRect(55, 10, 3, 60);
+    });
   }
 
   function ensureTextures(scene) {

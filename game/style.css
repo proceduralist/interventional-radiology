@@ -147,3 +147,9 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--text);
 .maplbl{pointer-events:none;font-family:ui-monospace,monospace;letter-spacing:.05em}
 .youdot{animation:youpulse 1.1s ease-in-out infinite}
 @keyframes youpulse{0%,100%{opacity:1}50%{opacity:.35}}
+
+/* hospital elevator */
+.card.elevcard{max-width:360px;text-align:center}
+.elevfloors{display:flex;flex-direction:column;gap:8px;margin:10px 0}
+.elevfloors .btn{width:100%;text-align:left}
+.elevfloors .btn b{display:inline-block;width:1.4em}

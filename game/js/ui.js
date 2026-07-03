@@ -446,5 +446,33 @@
     },
   };
 
-  root.IRUI = { overlay, clear, toast, Auth, EMR, Angio, Debrief, Shop, SimLab, CampusMap };
+  // --- Hospital elevator ----------------------------------------------------
+  const Elevator = {
+    show(current, order, info, opts) {
+      const card = el("div", "card elevcard");
+      card.appendChild(el("h2", null, "🛗 Elevator"));
+      card.appendChild(el("p", "sub", "Select a floor · [Esc] to stay"));
+      const col = el("div", "elevfloors");
+      const onKey = (e) => { if (e.key === "Escape") close(); };
+      const close = (picked) => {
+        document.removeEventListener("keydown", onKey);
+        clear();
+        if (picked) opts.onPick(picked); else opts.onClose();
+      };
+      order.slice().reverse().forEach(f => {
+        const here = f === current;
+        const b = el("button", "btn" + (here ? " ghost" : ""), "<b>" + f + "</b> — " + info[f].title.replace(/^.*?— /, "") + (here ? " · you are here" : ""));
+        b.disabled = here;
+        b.onclick = () => close(f);
+        col.appendChild(b);
+      });
+      const stay = el("button", "btn ghost", "Stay on this floor");
+      stay.onclick = () => close();
+      card.append(col, stay);
+      document.addEventListener("keydown", onKey);
+      show(card);
+    },
+  };
+
+  root.IRUI = { overlay, clear, toast, Auth, EMR, Angio, Debrief, Shop, SimLab, CampusMap, Elevator };
 })(window);

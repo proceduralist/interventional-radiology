@@ -271,41 +271,71 @@
   };
 
   // ======================================================================
-  //  HOSPITAL — UMass Memorial, 3rd floor IR (gameplay hub)
+  //  HOSPITAL — UMass Memorial, multi-floor (B / 1 / 2 / 3)
+  //  Stairs move one flight; the elevator reaches any floor; campus exit
+  //  is from the 1st-floor lobby only.
   // ======================================================================
+  const FLOOR_ORDER = ["B", "1", "2", "3"];
+  const FLOOR_INFO = {
+    B: { title: "Basement — Sim Lab & Supply Chain" },
+    1: { title: "1st Floor — Main Lobby" },
+    2: { title: "2nd Floor — Inpatient Wards" },
+    3: { title: "3rd Floor — Interventional Radiology" },
+  };
+
   const Hospital = {
     key: "Hospital",
-    create() {
+    create(data) {
       const W = root.IRWorld;
+      const floor = (data && data.floor) || "1";
       this.busy = false;
       W.ensureTextures(this); W.paintInterior(this);
       this.cameras.main.setBackgroundColor("#0b1019");
 
-      // floor + wall face
+      // room shell: floor + north wall face + frame
       this.add.tileSprite(120, 150, 720, 440, "t_lino").setOrigin(0).setDepth(0);
       this.add.tileSprite(120, 150, 720, 82, "t_iwall").setOrigin(0).setDepth(1);
       const frame = this.add.graphics().setDepth(2);
       frame.fillStyle(0x1c2331, 1);
       frame.fillRect(110, 140, 740, 10); frame.fillRect(110, 590, 740, 12);
       frame.fillRect(110, 140, 10, 462); frame.fillRect(840, 140, 10, 462);
-      label(this, 480, 110, "UMass Memorial Medical Center — 3rd Floor, Interventional Radiology", 15);
+      label(this, 480, 110, "UMass Memorial Medical Center — " + FLOOR_INFO[floor].title, 15);
+      if (floor === "B") this.add.rectangle(480, 371, 720, 441, 0x0a0e16, 0.28).setDepth(50); // dim basement
 
       const room = (x, y, w, h, color, stroke, txt) => {
         this.add.rectangle(x, y, w, h, color, 0.92).setStrokeStyle(2, stroke).setDepth(3);
         label(this, x, y, txt, 12).setDepth(4);
       };
-      room(280, 320, 150, 100, 0x2f6f4f, 0x3f8f6f, "Inpatient Ward\n(bedside EMR)");
-      room(690, 320, 150, 100, 0x3a4a7a, 0x5a6fbf, "Angio Suite");
-      room(280, 480, 150, 80, 0x6f5a2f, 0x9f8a4f, "Sim Lab");
-      room(690, 480, 150, 80, 0x2f5a6f, 0x4f8a9f, "Procurement");
-      this.add.rectangle(480, 560, 120, 44, 0x555f73).setDepth(3); label(this, 480, 560, "Exit → Campus", 11).setDepth(4);
-      [[150, 240], [820, 240]].forEach(([px, py]) => this.add.image(px, py, "t_plant").setOrigin(0.5, 1).setDepth(py));
+      const solids = this.physics.add.staticGroup();
+      const solid = (x, y, w, h) => { const z = this.add.zone(x, y, w, h); this.physics.add.existing(z, true); solids.add(z); };
 
-      spawnPlayer(this, 480, 420);
-      this.physics.world.setBounds(130, 232, 700, 358);
-      const refreshHud = () => this._hud.setText("Funds " + S.save.funds + " · Cases " + S.save.casesCompleted + " · Best " + S.save.bestScore);
-      this._hud = hud(this, ""); refreshHud(); this._refreshHud = refreshHud;
+      // --- vertical circulation on the north wall (every floor) -----------
+      const portals = [];
+      this.add.image(210, 154, "t_elev").setOrigin(0).setDepth(2);
+      label(this, 240, 246, "ELEVATOR", 9).setAlpha(0.6).setDepth(2);
+      this.add.image(680, 154, "t_stairs").setOrigin(0).setDepth(2);
+      label(this, 712, 246, "STAIRS", 9).setAlpha(0.6).setDepth(2);
+      const idx = FLOOR_ORDER.indexOf(floor);
+      const go = (f) => this.scene.restart({ floor: f });
+      portals.push({ x: 240, y: 262, w: 70, h: 40, label: "Elevator", onEnter: () => {
+        this.scene.pause();
+        root.IRUI.Elevator.show(floor, FLOOR_ORDER, FLOOR_INFO, {
+          onPick: (f) => { root.IRUI.toast("🛗 " + FLOOR_INFO[f].title); go(f); },
+          onClose: () => { this.busy = false; this.scene.resume(); },
+        });
+      } });
+      if (idx < FLOOR_ORDER.length - 1) {
+        const up = FLOOR_ORDER[idx + 1];
+        portals.push({ x: 660, y: 262, w: 46, h: 40, label: "Stairs ↑ " + FLOOR_INFO[up].title, onEnter: () => go(up) });
+      }
+      if (idx > 0) {
+        const dn = FLOOR_ORDER[idx - 1];
+        portals.push({ x: 760, y: 262, w: 46, h: 40, label: "Stairs ↓ " + FLOOR_INFO[dn].title, onEnter: () => go(dn) });
+      }
 
+      // --- shared helpers ---------------------------------------------------
+      const refreshHud = () => this._hud.setText(FLOOR_INFO[floor].title + "\nFunds " + S.save.funds + " · Cases " + S.save.casesCompleted + " · Best " + S.save.bestScore);
+      this._hud = hud(this, ""); this._refreshHud = refreshHud;
       const openOverlay = (fn) => {
         this.scene.pause();
         const close = () => { root.IRUI.clear(); this.busy = false; this.scene.resume(); refreshHud(); };
@@ -316,16 +346,59 @@
         try { S.save.updatedAt = new Date().toISOString(); await root.IRNet.writeSlot(S.slot, S.save); }
         catch (e) { root.IRUI.toast("Save failed: " + (e.message || e)); }
       };
+      const flavor = (x, y, lbl, msg) => {
+        this.add.image(x, y, "t_kiosk").setOrigin(0.5, 1).setDepth(y);
+        portals.push({ x, y: y - 10, w: 50, h: 40, label: lbl, onEnter: () => { this.busy = false; root.IRUI.toast(msg, 3000); } });
+      };
 
-      makePortals(this, [
-        { x: 280, y: 320, w: 150, h: 100, label: "Round on the next patient", onEnter: () => CaseFlow.run(this) },
-        { x: 690, y: 320, w: 150, h: 100, label: "Angio suite (round first)", onEnter: () => { this.busy = false; root.IRUI.toast("See the patient at the bedside first — round in the Ward."); } },
-        { x: 280, y: 480, w: 150, h: 80, label: "Practice in the Sim Lab", onEnter: () => openOverlay((close) =>
-            root.IRUI.SimLab.show({ save: S.save, devices: S.bundle.devices, config: S.bundle.config, configMeta: S.bundle.configMeta }, { onClose: close })) },
-        { x: 690, y: 480, w: 150, h: 80, label: "Procurement office", onEnter: () => openOverlay((close) =>
-            root.IRUI.Shop.show({ save: S.save, devices: S.bundle.devices, config: S.bundle.config }, { onPurchase: () => persist(), onClose: close })) },
-        { x: 480, y: 560, w: 120, h: 44, label: "Head out to campus", onEnter: () => this.scene.start("Overworld") },
-      ]);
+      // --- per-floor content ------------------------------------------------
+      if (floor === "1") {
+        this.add.image(416, 300, "t_desk").setOrigin(0).setDepth(362); solid(480, 340, 128, 42);
+        label(this, 480, 292, "Reception", 10).setAlpha(0.7).setDepth(4);
+        for (let i = 0; i < 5; i++) this.add.image(170 + i * 30, 420, "t_chair").setOrigin(0.5, 1).setDepth(420);
+        this.add.image(560, 160, "t_board").setOrigin(0).setDepth(3);
+        [[140, 250], [820, 250], [140, 570], [820, 570]].forEach(([px, py]) => this.add.image(px, py, "t_plant").setOrigin(0.5, 1).setDepth(py));
+        flavor(360, 470, "Information desk", "The volunteer smiles: \"Interventional radiology? Elevator to 3 — but round on your patients on 2 first.\"");
+        flavor(620, 470, "Gift shop", "Balloons, word-search books, and a suspicious amount of lavender lotion.");
+        const door = this.add.graphics().setDepth(3);
+        door.fillStyle(0x20262e, 1).fillRect(444, 580, 72, 20);
+        door.fillStyle(0x2a4a66, 1).fillRect(448, 583, 30, 14).fillRect(482, 583, 30, 14);
+        portals.push({ x: 480, y: 575, w: 100, h: 44, label: "Exit to campus", onEnter: () => this.scene.start("Overworld") });
+      } else if (floor === "2") {
+        room(280, 330, 170, 110, 0x2f6f4f, 0x3f8f6f, "Inpatient Ward\n(bedside EMR)");
+        [[560, 300], [620, 300], [680, 300], [560, 480], [620, 480], [680, 480]].forEach(([px, py]) => {
+          this.add.image(px, py, "t_bed").setOrigin(0.5, 0).setDepth(py + 56); solid(px, py + 30, 36, 44);
+        });
+        this.add.image(770, 160, "t_board").setOrigin(0).setDepth(3);
+        flavor(400, 520, "Nurses' station", "\"Bed 4 pulled his IV again. Also, are you consenting your port patient or not?\"");
+        portals.push({ x: 280, y: 330, w: 170, h: 110, label: "Round on the next patient", onEnter: () => CaseFlow.run(this) });
+      } else if (floor === "3") {
+        room(300, 350, 200, 130, 0x3a4a7a, 0x5a6fbf, "Angio Suite");
+        this.add.image(300, 300, "t_carm").setOrigin(0.5, 0).setDepth(362);
+        room(660, 320, 150, 80, 0x2f4a5a, 0x4f7a9f, "Control Room");
+        this.add.image(150, 480, "t_bed").setOrigin(0.5, 0).setDepth(536); solid(150, 510, 36, 44); // holding bay
+        label(this, 150, 462, "Holding", 9).setAlpha(0.6).setDepth(4);
+        flavor(660, 490, "Reading room", "Rows of dark monitors. Somebody is dictating very, very fast.");
+        portals.push({ x: 300, y: 350, w: 200, h: 130, label: "Angio suite", onEnter: () => { this.busy = false; root.IRUI.toast("Cases start at the bedside — round on the 2nd-floor ward first."); } });
+        portals.push({ x: 660, y: 320, w: 150, h: 80, label: "Control room", onEnter: () => { this.busy = false; root.IRUI.toast("Behind leaded glass, the techs guard the good chairs and the good snacks."); } });
+      } else { // basement
+        room(280, 380, 170, 110, 0x6f5a2f, 0x9f8a4f, "Sim Lab");
+        room(680, 380, 170, 110, 0x2f5a6f, 0x4f8a9f, "Procurement /\nSupply Chain");
+        const pipes = this.add.graphics().setDepth(2);
+        pipes.fillStyle(0x4a5262, 1).fillRect(120, 158, 720, 8).fillRect(120, 172, 720, 5);
+        pipes.fillStyle(0x39404d, 1).fillRect(300, 150, 10, 82).fillRect(600, 150, 10, 82);
+        flavor(480, 520, "Steam pipes", "Something hisses rhythmically. Facilities says it's \"supposed to do that.\"");
+        portals.push({ x: 280, y: 380, w: 170, h: 110, label: "Practice in the Sim Lab", onEnter: () => openOverlay((close) =>
+            root.IRUI.SimLab.show({ save: S.save, devices: S.bundle.devices, config: S.bundle.config, configMeta: S.bundle.configMeta }, { onClose: close })) });
+        portals.push({ x: 680, y: 380, w: 170, h: 110, label: "Procurement office", onEnter: () => openOverlay((close) =>
+            root.IRUI.Shop.show({ save: S.save, devices: S.bundle.devices, config: S.bundle.config }, { onPurchase: () => persist(), onClose: close })) });
+      }
+
+      spawnPlayer(this, 480, 420);
+      this.physics.world.setBounds(130, 232, 700, 358);
+      this.physics.add.collider(this.player, solids);
+      refreshHud();
+      makePortals(this, portals);
     },
     update() { movePlayer(this, 200); updatePortals(this); },
   };
@@ -367,6 +440,7 @@
       };
 
       const runAngio = () => {
+        root.IRUI.toast("🛏 The patient is wheeled up to the 3rd-floor angio suite.");
         const engine = root.IRAngio.create({
           params: B.params, vesselMap: B.vesselMap, devices: B.devices,
           complications: B.complications.filter(c => c.procedure_id === B.procedure.id),
