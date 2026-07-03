@@ -178,3 +178,20 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--text);
 .confres{border-radius:6px;padding:8px 12px;margin:8px 0;font-size:13px;text-align:left}
 .confres.okr{background:#12301f}
 .confres.bad{background:#301212}
+
+/* P4: case picker, call room / achievements, staff lounge */
+.card.casepick{max-width:560px}
+.card.casepick .elevfloors .btn small{color:var(--faint);font-weight:400}
+.card.casepick .elevfloors .btn em{color:var(--accent2);font-style:normal}
+.card.lounge{max-width:560px}
+.card.lounge .dosline{font-style:italic;color:#cfe0d6}
+.card.callroom{max-width:600px}
+.card.callroom .doslines{grid-template-columns:1fr 1fr;gap:5px 18px}
+.achgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:12px 0 4px}
+.ach{background:#0e1522;border:1px solid var(--line);border-radius:9px;padding:9px 6px;
+  text-align:center;opacity:.4;filter:grayscale(.7);transition:.2s}
+.ach.got{opacity:1;filter:none;border-color:var(--accent);box-shadow:0 0 0 1px var(--accent-dim) inset}
+.ach .achico{font-size:22px;display:block;line-height:1.1}
+.ach b{display:block;font-size:11px;margin:3px 0 1px}
+.ach small{display:block;font-size:9px;color:var(--faint);line-height:1.25}
+@media(max-width:560px){.achgrid{grid-template-columns:repeat(2,1fr)}}

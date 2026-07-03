@@ -5,11 +5,18 @@
 (function (root) {
   "use strict";
   const rest = (p) => root.IRNet.rest(p);
-  const LS = "irc-game-bundle-v1";
+  const LS = "irc-game-bundle-v2:"; // per-procedure cache, keyed by data_version
 
   async function version() {
     const rows = await rest("data_version?select=version,updated_at&id=eq.1");
     return rows[0];
+  }
+
+  // P4: every procedure in v_game_ready is playable — pure data entry on the
+  // dashboard (published proc + game params + vessel map + generator +
+  // complication) makes a new case appear here with zero code changes.
+  async function listReady() {
+    return rest("v_game_ready?select=*&order=complexity.asc,id.asc");
   }
 
   async function fetchBundle(procedureId) {
@@ -50,15 +57,16 @@
   }
 
   async function loadCase(procedureId) {
+    const key = LS + procedureId;
     let cached = null;
-    try { cached = JSON.parse(localStorage.getItem(LS) || "null"); } catch (e) {}
+    try { cached = JSON.parse(localStorage.getItem(key) || "null"); } catch (e) {}
     try {
       const ver = await version();
       if (cached && cached.dbVersion === ver.version && cached.bundle && cached.bundle.procedure.id === procedureId) {
         return cached.bundle;
       }
       const bundle = await fetchBundle(procedureId);
-      try { localStorage.setItem(LS, JSON.stringify({ dbVersion: ver.version, bundle })); } catch (e) {}
+      try { localStorage.setItem(key, JSON.stringify({ dbVersion: ver.version, bundle })); } catch (e) {}
       return bundle;
     } catch (e) {
       if (cached && cached.bundle && cached.bundle.procedure.id === procedureId) return cached.bundle;
@@ -66,5 +74,5 @@
     }
   }
 
-  root.IRGameData = { loadCase, version };
+  root.IRGameData = { loadCase, listReady, version };
 })(window);

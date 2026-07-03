@@ -8,7 +8,7 @@
 (function (root) {
   "use strict";
   const Phaser = root.Phaser;
-  const S = root.IRState = { user: null, guest: false, bundle: null, save: null, slot: 1, lastDoor: null, seenIntro: false };
+  const S = root.IRState = { user: null, guest: false, bundle: null, cases: [], save: null, slot: 1, lastDoor: null, seenIntro: false };
   const TEXT = "#dfe6f2";
 
   // ----- shared helpers -----------------------------------------------------
@@ -79,11 +79,6 @@
 
       const startGame = async () => {
         status.setText("Loading case data…");
-        try {
-          S.bundle = await root.IRGameData.loadCase("chest-port");
-        } catch (e) {
-          status.setText("Could not load case data: " + (e.message || e)); return;
-        }
         if (S.user && !S.guest) {
           try {
             const slots = await root.IRNet.loadSlots();
@@ -92,6 +87,15 @@
           } catch (e) { S.save = { funds: 0, clout: 0, casesCompleted: 0, bestScore: 0 }; }
         } else {
           S.save = { funds: 0, clout: 0, casesCompleted: 0, bestScore: 0 };
+        }
+        try {
+          // every v_game_ready procedure is playable (P4: data-only expansion)
+          S.cases = await root.IRGameData.listReady();
+          if (!S.cases.length) throw new Error("no game-ready procedures");
+          const startId = S.cases.some(c => c.id === S.save.lastCase) ? S.save.lastCase : S.cases[0].id;
+          S.bundle = await root.IRGameData.loadCase(startId);
+        } catch (e) {
+          status.setText("Could not load case data: " + (e.message || e)); return;
         }
         root.IREcon.ensureInventory(S.save, S.bundle.config);
         root.IRUI.clear();
@@ -426,17 +430,23 @@
           this.add.image(px, py, "t_bed").setOrigin(0.5, 0).setDepth(py + 56); solid(px, py + 30, 36, 44);
         });
         this.add.image(770, 160, "t_board").setOrigin(0).setDepth(3);
-        flavor(400, 520, "Nurses' station", "\"Bed 4 pulled his IV again. Also, are you consenting your port patient or not?\"");
-        portals.push({ x: 280, y: 330, w: 170, h: 110, label: "Round on the next patient", onEnter: () => CaseFlow.run(this) });
+        room(210, 510, 130, 76, 0x6a5530, 0x9a8550, "Staff Lounge");
+        flavor(420, 520, "Nurses' station", "\"Bed 4 pulled his IV again. Also, are you consenting your port patient or not?\"");
+        portals.push({ x: 280, y: 330, w: 170, h: 110, label: "Round on the next patient", onEnter: () => startRounds(this, openOverlay) });
+        portals.push({ x: 210, y: 510, w: 130, h: 76, label: "Staff lounge — attending's pearls", onEnter: () => openOverlay((close) =>
+            root.IRUI.Lounge.show(S.bundle.procedure, { onClose: close })) });
       } else if (floor === "3") {
         room(300, 350, 200, 130, 0x3a4a7a, 0x5a6fbf, "Angio Suite");
         this.add.image(300, 300, "t_carm").setOrigin(0.5, 0).setDepth(362);
         room(660, 320, 150, 80, 0x2f4a5a, 0x4f7a9f, "Control Room");
+        room(680, 500, 150, 80, 0x4a3f6a, 0x7a6a9f, "Call Room");
         this.add.image(150, 480, "t_bed").setOrigin(0.5, 0).setDepth(536); solid(150, 510, 36, 44); // holding bay
         label(this, 150, 462, "Holding", 9).setAlpha(0.6).setDepth(4);
-        flavor(660, 490, "Reading room", "Rows of dark monitors. Somebody is dictating very, very fast.");
+        flavor(480, 510, "Reading room", "Rows of dark monitors. Somebody is dictating very, very fast.");
         portals.push({ x: 300, y: 350, w: 200, h: 130, label: "Angio suite", onEnter: () => { this.busy = false; root.IRUI.toast("Cases start at the bedside — round on the 2nd-floor ward first."); } });
         portals.push({ x: 660, y: 320, w: 150, h: 80, label: "Control room", onEnter: () => { this.busy = false; root.IRUI.toast("Behind leaded glass, the techs guard the good chairs and the good snacks."); } });
+        portals.push({ x: 680, y: 500, w: 150, h: 80, label: "Call room — your profile", onEnter: () => openOverlay((close) =>
+            root.IRUI.CallRoom.show({ save: S.save, user: S.user, guest: S.guest, tiers: (S.bundle.config.clout_tiers || {}).tiers || [], cases: S.cases }, { onClose: close })) });
       } else { // basement
         room(280, 380, 170, 110, 0x6f5a2f, 0x9f8a4f, "Sim Lab");
         room(680, 380, 170, 110, 0x2f5a6f, 0x4f8a9f, "Procurement /\nSupply Chain");
@@ -458,6 +468,28 @@
     },
     update() { movePlayer(this, 200); updatePortals(this); },
   };
+
+  // ======================================================================
+  // P4: pick tonight's case from every game-ready procedure (v_game_ready).
+  // With one ready case this is invisible; new procedures appear here from
+  // pure dashboard data entry.
+  function startRounds(scene, openOverlay) {
+    if (!S.cases || S.cases.length <= 1) { S.save.lastCase = S.bundle.procedure.id; CaseFlow.run(scene); return; }
+    openOverlay((close) => root.IRUI.CasePick.show(S.cases, S.bundle.procedure.id, {
+      onClose: close,
+      onPick: async (id) => {
+        try {
+          if (id !== S.bundle.procedure.id) {
+            root.IRUI.toast("Pulling the case files…");
+            S.bundle = await root.IRGameData.loadCase(id);
+          }
+          S.save.lastCase = id;
+          root.IRUI.clear();          // busy stays true — CaseFlow owns the overlay now
+          CaseFlow.run(scene);
+        } catch (e) { close(); root.IRUI.toast("Could not load case: " + (e.message || e)); }
+      },
+    }));
+  }
 
   // ======================================================================
   // Case flow: EMR → Angio → Debrief (overlay-driven). Pauses the Phaser hub.

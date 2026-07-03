@@ -533,6 +533,90 @@
     },
   };
 
+  // --- Case picker (P4: every v_game_ready procedure is playable) -----------
+  const CasePick = {
+    show(cases, currentId, opts) {
+      const card = el("div", "card casepick");
+      card.appendChild(el("h2", null, "🛏 Tonight's list"));
+      card.appendChild(el("p", "sub", "Every case here is live from the Casebook database — new procedures appear as they're published."));
+      const col = el("div", "elevfloors");
+      cases.forEach(c => {
+        const stars = "★".repeat(c.complexity || 1) + "☆".repeat(Math.max(0, 5 - (c.complexity || 1)));
+        const b = el("button", "btn", "<b>" + c.title + "</b><br><small>" + stars + " · " + (c.pacing || "") + " · " + (c.category_id || "") +
+          (c.id === currentId ? " · <em>last worked up</em>" : "") + "</small>");
+        b.onclick = () => opts.onPick(c.id);
+        col.appendChild(b);
+      });
+      const back = el("button", "btn ghost", "Back to the ward");
+      back.onclick = () => opts.onClose();
+      card.append(col, back);
+      show(card);
+    },
+  };
+
+  // --- Call room: profile & achievements (spec §11) --------------------------
+  const CallRoom = {
+    show(p, opts) {
+      const s = p.save || {};
+      let tier = { name: "—", payout_mult: 1 };
+      (p.tiers || []).forEach(t => { if ((s.clout || 0) >= t.min) tier = t; });
+      const card = el("div", "card callroom");
+      card.appendChild(el("h2", null, "🛌 Call Room"));
+      card.appendChild(el("p", "sub", (p.guest ? "Guest resident (progress not saved)" : ((p.user && p.user.email) || "Resident")) + " · UMass Memorial IR"));
+      const box = el("div", "dossier");
+      const dl = el("div", "doslines");
+      [["Funds", s.funds || 0], ["Academic Clout", (s.clout || 0) + " — " + tier.name],
+       ["Payout multiplier", "×" + (tier.payout_mult || 1)], ["Cases completed", s.casesCompleted || 0],
+       ["Best debrief", (s.bestScore || 0) + "/100"], ["Devices owned", Object.keys(s.inventory || {}).length],
+       ["Podium defenses", Object.values(s.defenses || {}).reduce((a, b) => a + b, 0)],
+       ["Playable procedures", (p.cases || []).length]]
+        .forEach(([k, v]) => dl.appendChild(el("div", "dosline", "<b>" + k + ":</b> " + v)));
+      box.appendChild(dl);
+      card.appendChild(box);
+      const ach = [
+        ["🩺", "First Stick", "Complete a case", (s.casesCompleted || 0) >= 1],
+        ["📈", "Case Series", "Complete 10 cases", (s.casesCompleted || 0) >= 10],
+        ["💯", "Clean Debrief", "Score 100 on a case", (s.bestScore || 0) >= 100],
+        ["🎤", "Podium Survivor", "Finish a conference defense", Object.keys(s.defenses || {}).length > 0],
+        ["🔬", "Rising Researcher", "Reach 51 clout", (s.clout || 0) >= 51],
+        ["🌟", "Key Opinion Leader", "Reach 151 clout", (s.clout || 0) >= 151],
+        ["💰", "Matched", "Claim the KOL matching grant", !!s.grantClaimed],
+        ["🧰", "Supply Closet Key", "Own 10 devices", Object.keys(s.inventory || {}).length >= 10],
+      ];
+      const grid = el("div", "achgrid");
+      ach.forEach(([icon, name, desc, got]) => {
+        grid.appendChild(el("div", "ach" + (got ? " got" : ""), "<span class='achico'>" + icon + "</span><b>" + name + "</b><small>" + desc + "</small>"));
+      });
+      card.appendChild(grid);
+      const back = el("button", "btn ghost", "Back to work");
+      back.onclick = () => opts.onClose();
+      card.appendChild(back);
+      show(card);
+    },
+  };
+
+  // --- Staff lounge: attending's pearls (live from the procedure row) --------
+  const Lounge = {
+    show(procedure, opts) {
+      const card = el("div", "card lounge");
+      card.appendChild(el("h2", null, "☕ Staff Lounge"));
+      card.appendChild(el("p", "sub", "The attending stirs a third sugar into burnt coffee and holds forth on <b>" + procedure.title + "</b>."));
+      const pearls = (procedure.pearls || []).slice(0, 8);
+      const box = el("div", "dossier");
+      if (pearls.length) {
+        pearls.forEach(t => box.appendChild(el("div", "dosline", "“" + t + "”")));
+        box.appendChild(el("p", "sub", 'Straight from the Casebook — <span class="tag cited">the same pearls the website shows</span>.'));
+      } else {
+        box.appendChild(el("div", "dosline", "The attending is post-call and communicates only in espresso sips. (No pearls entered for this procedure yet.)"));
+      }
+      card.appendChild(box);
+      const back = el("button", "btn ghost", "Back to the ward");
+      back.onclick = () => opts.onClose();
+      card.appendChild(back);
+      show(card);
+    },
+  };
+
   // --- Hospital elevator ----------------------------------------------------
   const Elevator = {
     show(current, order, info, opts) {
@@ -561,5 +645,5 @@
     },
   };
 
-  root.IRUI = { overlay, clear, toast, Auth, EMR, Angio, Debrief, Shop, SimLab, CampusMap, Elevator, Conference };
+  root.IRUI = { overlay, clear, toast, Auth, EMR, Angio, Debrief, Shop, SimLab, CampusMap, Elevator, Conference, CasePick, CallRoom, Lounge };
 })(window);
