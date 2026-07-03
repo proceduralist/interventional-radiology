@@ -110,54 +110,40 @@
       this.busy = false;
       W.ensureTextures(this);
 
-      // --- layered tilemap: background = terrain (grass/road/sidewalk/water)
+      // --- layered tilemap: background = terrain (grass/roads/lots/sidewalks)
       const built = W.buildGrid();
       const map = this.make.tilemap({ data: built.grid, tileWidth: TILE, tileHeight: TILE });
       const tiles = map.addTilesetImage("tileset");
-      const ground = map.createLayer(0, tiles, 0, 0).setDepth(0);
-      ground.setCollision(W.T.WATER); // can't walk into the lake
+      map.createLayer(0, tiles, 0, 0).setDepth(0);
 
       // helipad decal (walkable)
       this.add.image(W.helipad.x * TILE, W.helipad.y * TILE, "t_helipad").setOrigin(0).setDepth(1);
-      label(this, (W.helipad.x + W.helipad.w / 2) * TILE, (W.helipad.y - 0.4) * TILE, "HELIPAD", 10).setAlpha(0.6).setDepth(1);
+      label(this, (W.helipad.x + 2.5) * TILE, (W.helipad.y - 0.4) * TILE, "HELIPAD", 10).setAlpha(0.6).setDepth(1);
 
-      // green / street / edge labels
-      W.greens.forEach(g => label(this, g.x * TILE, g.y * TILE, g.name, 11).setAlpha(0.55).setDepth(1));
-      W.signs.forEach(s => label(this, s.x * TILE + 60, s.y * TILE + 16, s.t, 12).setAlpha(0.85).setDepth(2));
-      W.roads.filter(r => r.h >= 3 || r.w >= 3).forEach(r => {
-        const horiz = r.w > r.h;
-        label(this, (r.x + (horiz ? 6 : r.w / 2)) * TILE, (r.y + (horiz ? r.h / 2 : 4)) * TILE, r.name, 10, horiz ? {} : { angle: 0 })
-          .setAlpha(0.5).setDepth(1).setAngle(horiz ? 0 : -90);
-      });
-      W.lots.forEach(l => label(this, (l.x + l.w / 2) * TILE, (l.y + l.h / 2) * TILE, l.name, 9).setAlpha(0.5).setDepth(1));
+      // green / lot / street / edge labels (positions from the site plan)
+      W.labels.greens.forEach(([x, y, n]) => label(this, x * TILE, y * TILE, n, 11).setAlpha(0.55).setDepth(1));
+      W.labels.lots.forEach(([x, y, n]) => label(this, x * TILE, y * TILE, n, 9).setAlpha(0.5).setDepth(1));
+      W.labels.streets.forEach(([x, y, ang, n]) => label(this, x * TILE, y * TILE, n, 10).setAlpha(0.55).setDepth(1).setAngle(ang));
+      W.labels.signs.forEach(([x, y, t]) => label(this, x * TILE + 60, y * TILE + 16, t, 12).setAlpha(0.85).setDepth(2));
 
-      // --- midground: buildings (roof + south wall face, Y-sorted by base)
+      // --- midground: mask-footprint buildings (roofs + Y-sorted wall strips,
+      //     skybridge Sherman↔MSB, per-run static bodies)
       const solids = this.physics.add.staticGroup();
-      const shadows = this.add.graphics().setDepth(1);
       const portals = [];
-      W.buildings.forEach(b => {
-        const key = "bld_" + b.id;
-        const px = b.x * TILE, py = b.y * TILE, f = W.footprint(b);
-        const baseY = (b.y + f.h) * TILE;
-        shadows.fillStyle(0x000000, 0.22).fillRect(px + 5, baseY - 3, f.w * TILE, 8);
-        this.add.image(px, py, key).setOrigin(0).setDepth(baseY);
-        const nm = label(this, px + f.w * TILE / 2, py - 6, b.name, b.major ? 12 : 10, { backgroundColor: "#0e142099", padding: { x: 4, y: 2 } });
-        nm.setDepth(baseY).setAlpha(b.major ? 0.95 : 0.7).setOrigin(0.5, 1);
-        const body = this.add.zone(px + f.w * TILE / 2, py + f.h * TILE / 2, f.w * TILE, f.h * TILE);
-        this.physics.add.existing(body, true); solids.add(body);
-        const d = W.doorFor(b);
+      W.drawBuildings(this, solids).forEach(p => {
+        const b = p.b, d = { x: p.x, y: p.y };
         if (b.enter) {
-          portals.push({ x: d.x, y: d.y, w: 70, h: 44, label: "Enter " + b.name, onEnter: () => {
+          portals.push({ x: d.x, y: d.y, w: p.w, h: p.h, label: "Enter " + b.name, onEnter: () => {
             S.lastDoor = { x: d.x, y: d.y + 6 };
             this.scene.start(b.enter === "Hospital" ? "Hospital" : "Lobby", { id: b.id });
           } });
         } else if (b.lockedMsg) {
-          portals.push({ x: d.x, y: d.y, w: 70, h: 44, label: b.name, onEnter: () => { this.busy = false; root.IRUI.toast(b.lockedMsg); } });
+          portals.push({ x: d.x, y: d.y, w: p.w, h: p.h, label: b.name, onEnter: () => { this.busy = false; root.IRUI.toast(b.lockedMsg); } });
         }
       });
 
       // --- trees (Y-sorted, trunk-only collision)
-      W.treeList(built.grid, built.occ).forEach(t => {
+      W.treeList().forEach(t => {
         const tx = (t.c + 0.5) * TILE, ty = (t.r + 1) * TILE;
         this.add.image(tx, ty, "tree" + t.v).setOrigin(0.5, 1).setDepth(ty);
         const trunk = this.add.zone(tx, ty - 6, 14, 10);
@@ -169,7 +155,6 @@
       spawnPlayer(this, sp.x, sp.y);
       this.physics.world.setBounds(0, 0, W.WPX, W.HPX);
       this.physics.add.collider(this.player, solids);
-      this.physics.add.collider(this.player, ground);
       this.cameras.main.setBounds(0, 0, W.WPX, W.HPX).startFollow(this.player, true, 0.15, 0.15).setBackgroundColor("#101724");
 
       // --- HUD + campus map key
