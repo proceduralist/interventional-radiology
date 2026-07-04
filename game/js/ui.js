@@ -84,18 +84,21 @@
       card.appendChild(prov);
 
       const row = el("div", "btnrow");
-      const bProceed = el("button", "btn primary", "Scrub in →");
       const bReroll = el("button", "btn ghost", "Next patient");
+      const bBag = el("button", "btn", "🎒 View bag");
+      const bLeave = el("button", "btn ghost", "Leave — don't scrub in");
+      bReroll.onclick = () => opts.onReroll();
+      bBag.onclick = () => opts.onViewBag && opts.onViewBag();
+      bLeave.onclick = () => opts.onCancel && opts.onCancel();
       if (!p.canProceed) {
-        bProceed.disabled = true;
         const bOrder = el("button", "btn", "Order platelet transfusion & recheck");
         bOrder.onclick = () => opts.onOrderCorrection();
-        row.append(bOrder, bReroll);
+        row.append(bOrder, bReroll, bBag, bLeave);
       } else {
-        row.append(bProceed, bReroll);
+        const bProceed = el("button", "btn primary", "Scrub in →");
+        bProceed.onclick = () => opts.onProceed();
+        row.append(bProceed, bReroll, bBag, bLeave);
       }
-      bProceed.onclick = () => opts.onProceed();
-      bReroll.onclick = () => opts.onReroll();
       card.appendChild(row);
       show(card);
     },

@@ -536,6 +536,10 @@
           if (missing.length) { root.IRUI.toast("⛔ Kit incomplete — restock at procurement: " + missing.join(", ")); return; }
           runAngio();
         },
+        onCancel: () => backToHub(),
+        onViewBag: () => root.IRUI.Bag.show(
+          { inventory: root.IREcon.ensureInventory(S.save, B.config), devices: B.devices },
+          { onClose: () => showEMR() }),
       });
 
       const cloutMult = () => {
