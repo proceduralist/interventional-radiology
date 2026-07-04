@@ -175,7 +175,7 @@
       // --- HUD + campus map key
       const who = S.guest ? "guest (no save)" : ((S.user && S.user.email) || "resident");
       this._hud = hud(this, "");
-      const refreshHud = () => this._hud.setText("Funds " + S.save.funds + " · Cases " + S.save.casesCompleted + " · " + who + "\n[M] campus map · [E] enter · arrows/WASD walk");
+      const refreshHud = () => this._hud.setText("Funds " + S.save.funds + " · Cases " + S.save.casesCompleted + " · " + who + "\n[M] map · [B] bag · [E] enter · arrows/WASD walk");
       refreshHud();
       const mapBtn = this.add.text(950, 8, "🗺 MAP [M]", { fontFamily: "monospace", fontSize: "13px", color: "#ffe08a", backgroundColor: "#0e1420cc", padding: { x: 8, y: 5 } })
         .setOrigin(1, 0).setScrollFactor(0).setDepth(1e6).setInteractive({ useHandCursor: true });
@@ -200,6 +200,24 @@
       };
       this.input.keyboard.on("keydown-M", openMap);
       mapBtn.on("pointerdown", openMap);
+
+      // --- Bag (supply cart), openable while walking ([B] / button)
+      const bagBtn = this.add.text(950, 34, "🎒 BAG [B]", { fontFamily: "monospace", fontSize: "13px", color: "#a6ce39", backgroundColor: "#0e1420cc", padding: { x: 8, y: 5 } })
+        .setOrigin(1, 0).setScrollFactor(0).setDepth(1e6).setInteractive({ useHandCursor: true });
+      const openBag = () => {
+        if (this.busy) return;
+        this.busy = true;
+        this.input.keyboard.resetKeys();
+        root.IRUI.Bag.show({
+          inventory: root.IREcon.ensureInventory(S.save, (S.bundle && S.bundle.config) || {}),
+          devices: (S.bundle && S.bundle.devices) || [],
+        }, {
+          onClose: () => { this.busy = false; this.input.keyboard.resetKeys(); },
+          onInspect: (id, d) => root.IRUI.toast(d.name || id),
+        });
+      };
+      this.input.keyboard.on("keydown-B", openBag);
+      bagBtn.on("pointerdown", openBag);
 
       makePortals(this, portals);
       if (!S.seenIntro) { S.seenIntro = true; root.IRUI.toast("Welcome to the University Campus. Walk anywhere — or press [M] for the shuttle map.", 3500); }
@@ -534,7 +552,9 @@
           patient, config: B.config, seed,
           inventory: root.IREcon.ensureInventory(S.save, B.config),
         });
-        root.IRUI.Angio.start(engine, { procedure: B.procedure, params: B.params, patient }, { onFinish: (score) => finish(score) });
+        root.IRUI.Angio.start(engine, { procedure: B.procedure, params: B.params, patient,
+          config: B.config, devices: B.devices, inventory: root.IREcon.ensureInventory(S.save, B.config) },
+          { onFinish: (score) => finish(score) });
       };
 
       const finish = async (score) => {

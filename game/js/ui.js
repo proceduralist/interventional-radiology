@@ -102,94 +102,199 @@
   };
 
   // --- Angio console ------------------------------------------------------
+  // --- tool sprite glyphs (vector fallback until assets/tools.json ships) ----
+  const TOOLCOLOR = { needle: "#B4B2A9", micro_guidewire: "#85B7EB", guidewire: "#85B7EB", catheter: "#5DCAA5",
+    sheath: "#AFA9EC", microcatheter: "#5DCAA5", balloon: "#F0997B", stent: "#EF9F27", stent_graft: "#EF9F27",
+    coil: "#D3D1C7", plug: "#EF9F27", particle: "#97C459", liquid_embolic: "#ED93B1", closure: "#B4B2A9",
+    drain: "#5DCAA5", filter: "#B4B2A9", port: "#AFA9EC", snare: "#5DCAA5", other: "#B4B2A9" };
+  function toolGlyph(cls) {
+    const c = TOOLCOLOR[cls] || "#B4B2A9";
+    const s = 'width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="' + c + '" stroke-width="1.8" stroke-linecap="round"';
+    const G = {
+      needle: '<line x1="20" y1="4" x2="8" y2="16"/><rect x="3" y="15" width="6" height="6" rx="1" fill="' + c + '" stroke="none"/>',
+      micro_guidewire: '<path d="M3 14 q2.5 -6 5 0 t5 0 t5 0 t3 -2"/>', guidewire: '<path d="M3 14 q2.5 -6 5 0 t5 0 t5 0 t3 -2"/>',
+      catheter: '<path d="M4 21 C4 9 20 15 20 3"/>', microcatheter: '<path d="M4 21 C9 8 15 17 20 4"/><circle cx="20" cy="4" r="1.6" fill="' + c + '" stroke="none"/>',
+      sheath: '<rect x="6" y="9" width="14" height="6" rx="2"/><rect x="2" y="7" width="4" height="10" rx="1" fill="' + c + '" stroke="none"/>',
+      balloon: '<line x1="2" y1="12" x2="22" y2="12"/><ellipse cx="12" cy="12" rx="5.5" ry="3.4"/>',
+      stent: '<rect x="5" y="8" width="14" height="8" rx="1"/><path d="M5 12h14M9 8l6 8M15 8l-6 8" stroke-width="1"/>',
+      stent_graft: '<rect x="5" y="8" width="14" height="8" rx="1"/><path d="M5 12h14" stroke-width="1"/>',
+      coil: '<path d="M12 12 m-6 0 a6 6 0 1 1 6 6 a4 4 0 1 1 -4 -4 a2 2 0 1 1 2 2"/>',
+      plug: '<path d="M6 6 L18 6 L12 19 Z"/><path d="M8 10h8M9 14h6" stroke-width="1"/>',
+      particle: '<path d="M8 4h8v4l-2 3v7a2 2 0 0 1-4 0v-7L8 8z"/><circle cx="11" cy="16" r="1" fill="' + c + '" stroke="none"/>',
+      liquid_embolic: '<path d="M12 3 C7 11 8 20 12 20 C16 20 17 11 12 3Z"/>', closure: '<circle cx="12" cy="9" r="4"/><path d="M12 13 v7 M9 20 h6"/>',
+      drain: '<path d="M5 3 v9 a4 4 0 1 0 8 0 a2 2 0 1 0 -4 0"/>', filter: '<path d="M6 5 L18 5 L12 20 Z"/>',
+      port: '<circle cx="9" cy="12" r="5"/><line x1="14" y1="12" x2="22" y2="12"/>', snare: '<circle cx="10" cy="9" r="5"/><line x1="13" y1="13" x2="21" y2="20"/>',
+      contrast: '<rect x="8" y="4" width="6" height="13" rx="1"/><line x1="11" y1="4" x2="11" y2="1"/><line x1="11" y1="17" x2="11" y2="22"/>',
+    };
+    return '<svg ' + s + '>' + (G[cls] || '<circle cx="12" cy="12" r="7"/>') + '</svg>';
+  }
+  // Supply-cart grid (shared by the Angio Bag command + the overworld Bag).
+  function cartGrid(inventory, devById, onPick, selectedId) {
+    const owned = Object.keys(inventory || {}).filter(id => inventory[id]);
+    const grid = el("div", "bcart");
+    owned.forEach(id => {
+      const d = devById[id] || { id, name: id, device_class: "other" };
+      const cell = el("button", "bslot" + (selectedId === id ? " on" : ""));
+      cell.title = d.name; cell.innerHTML = toolGlyph(d.device_class);
+      if (onPick) cell.onclick = () => onPick(id, d);
+      grid.appendChild(cell);
+    });
+    if (!owned.length) grid.appendChild(el("div", "bsub", "(cart empty — restock at procurement)"));
+    return grid;
+  }
+  function battleSceneHTML() {
+    return '<svg class="bsvg" viewBox="0 0 260 150" preserveAspectRatio="xMidYMid meet" aria-hidden="true">' +
+      '<ellipse cx="150" cy="132" rx="96" ry="10" fill="#0c0f13"/>' +
+      '<rect x="60" y="86" width="180" height="16" rx="4" fill="#5a6472"/><rect x="60" y="86" width="180" height="5" rx="2" fill="#727d8d"/>' +
+      '<rect x="74" y="102" width="9" height="26" fill="#3d4550"/><rect x="217" y="102" width="9" height="26" fill="#3d4550"/>' +
+      '<rect x="78" y="78" width="150" height="10" rx="5" fill="#c7cfdb"/><rect x="90" y="70" width="128" height="12" rx="6" fill="#9fb4d6"/>' +
+      '<circle cx="92" cy="76" r="9" fill="#e8c9a8"/>' +
+      '<path d="M40 40 A44 44 0 0 1 40 128" fill="none" stroke="#8b97a7" stroke-width="12"/>' +
+      '<rect x="28" y="30" width="34" height="16" rx="3" fill="#6b7686"/><rect x="28" y="122" width="34" height="16" rx="3" fill="#6b7686"/>' +
+      '<line x1="45" y1="46" x2="45" y2="70" stroke="#4b5462" stroke-width="3"/>' +
+      '<rect x="170" y="16" width="40" height="26" rx="3" fill="#0a1418" stroke="#2b3038"/><path d="M176 40 l-14 22" stroke="#2b3038" stroke-width="3"/>' +
+      '</svg>';
+  }
+
+  // --- Angio Suite: Pokémon-battle screen (patient+C-arm vs. the operator) ---
   const Angio = {
     start(engine, ctx, opts) {
-      const card = el("div", "card angio");
-      const top = el("div", "angio-top");
-      const vit = el("div", "vitals");
-      const tele = el("div", "tele");
-      top.append(vit, tele);
-      const stage = el("div", "angio-stage");
-      const logBox = el("div", "log");
-      const prompt = el("div", "prompt");
-      stage.append(logBox, prompt);
-      card.append(el("h2", null, "Angio Suite — " + ctx.procedure.title), top, stage);
+      let selectedItem = null, imaging = null;
+      const inv = ctx.inventory || {};
+      const devById = {}; (ctx.devices || []).forEach(d => { devById[d.id] = d; });
+      const taxonomy = (ctx.taxonomy && ctx.taxonomy.length) ? ctx.taxonomy
+        : (ctx.config && ctx.config.action_taxonomy && ctx.config.action_taxonomy.categories) || [];
+
+      const card = el("div", "card battle");
+      const scene = el("div", "bscene"); scene.innerHTML = battleSceneHTML();
+      const statusBox = el("div", "bstatus");
+      const caseBox = el("div", "bcase");
+      scene.append(statusBox, caseBox);
+      const lower = el("div", "blower");
+      const narr = el("div", "bnarr");
+      const menu = el("div", "bmenu");
+      lower.append(narr, menu);
+      card.append(el("h2", "bh", "Angio Suite — " + ctx.procedure.title), scene, lower);
       show(card);
 
-      function renderVitals() {
-        const s = engine.state(); const v = s.vitals;
-        const cls = v.sbp < 90 ? "crit" : v.sbp < 100 ? "warn" : "ok";
-        vit.innerHTML =
-          "<div class='vrow " + cls + "'><span>SBP/DBP</span><b>" + Math.round(v.sbp) + "/" + Math.round(v.dbp) + "</b></div>" +
-          "<div class='vrow'><span>HR</span><b>" + Math.round(v.hr) + "</b></div>" +
-          "<div class='vrow'><span>SpO₂</span><b>" + Math.round(v.spo2) + "%</b></div>" +
-          "<div class='vrow'><span>RR</span><b>" + Math.round(v.rr) + "</b></div>";
-        const dapRef = ctx.params.reference_dap_gycm2;
-        const dapCls = dapRef && s.accum.dapGycm2 > dapRef ? "warn" : "";
-        tele.innerHTML =
-          "<div class='vrow " + dapCls + "'><span>DAP</span><b>" + (s.accum.dapGycm2 || 0).toFixed(2) + "</b><small>Gy·cm² / " + (dapRef ? dapRef.toFixed(2) + " ref" : "—") + "</small></div>" +
-          "<div class='vrow'><span>Fluoro</span><b>" + s.accum.fluoroMin.toFixed(1) + "</b><small>min (sim)</small></div>" +
-          "<div class='vrow'><span>Contrast</span><b>" + s.accum.contrastMl.toFixed(0) + "</b><small>mL / " + ctx.patient.renal.contrastLimitMl + " lim</small></div>" +
-          "<div class='vrow'><span>Step</span><b>" + Math.min(s.stepIndex + 1, s.total) + " / " + s.total + "</b></div>";
+      const stabilityPct = (sbp) => Math.max(0, Math.min(100, Math.round((sbp - 40) / 0.9)));
+      function renderStatus() {
+        const s = engine.state(), v = s.vitals, stab = stabilityPct(v.sbp);
+        const col = stab > 60 ? "var(--ok)" : stab > 30 ? "var(--warn)" : "var(--danger)";
+        const tag = v.sbp < 90 ? "unstable" : v.sbp < 100 ? "guarded" : "stable";
+        statusBox.innerHTML =
+          "<div class='bstat-h'><span>Patient</span><span style='color:" + col + "'>" + tag + "</span></div>" +
+          "<div class='bbar'><i style='width:" + stab + "%;background:" + col + "'></i></div>" +
+          "<div class='bvit'><span>SBP <b>" + Math.round(v.sbp) + "</b></span><span>HR <b>" + Math.round(v.hr) + "</b></span><span>SpO₂ <b>" + Math.round(v.spo2) + "</b></span><span>RR <b>" + Math.round(v.rr) + "</b></span></div>";
+        const st = engine.currentStep(), dapRef = ctx.params.reference_dap_gycm2;
+        caseBox.innerHTML =
+          "<div class='bcase-h'>" + (st ? "Step " + st.n + " · " + st.title : "Wrapping up") + "</div>" +
+          "<div class='bmeters'>fluoro <b>" + s.accum.fluoroMin.toFixed(1) + "</b> min · DAP <b>" + (s.accum.dapGycm2 || 0).toFixed(2) + "</b>" + (dapRef ? "/" + dapRef.toFixed(2) : "") + " · contrast <b>" + s.accum.contrastMl.toFixed(0) + "</b>/" + ctx.patient.renal.contrastLimitMl + " mL</div>";
       }
-      function pushLog(text, kind) { const line = el("div", "logline" + (kind ? " " + kind : ""), text); logBox.appendChild(line); logBox.scrollTop = logBox.scrollHeight; }
+      function say(html, kind) { const l = el("div", "bline" + (kind ? " " + kind : ""), html); narr.appendChild(l); narr.scrollTop = narr.scrollHeight; }
+      const scroller = () => el("div", "bscroll");
+      const backBtn = (fn) => { const b = el("button", "btn ghost", "‹ Back"); b.onclick = fn; return b; };
 
-      function renderStep() {
-        renderVitals();
-        const st = engine.currentStep();
-        prompt.innerHTML = "";
-        if (!st) return finish();
-        prompt.appendChild(el("div", "step-h", "Step " + st.n + " · " + st.title));
-        prompt.appendChild(el("div", "teach", st.teaching || ""));
-        prompt.appendChild(el("div", "ask", st.prompt));
-        const btns = el("div", "choices");
-        st.choices.forEach(c => {
-          const b = el("button", "btn choice");
-          b.innerHTML = c.label + (c.note ? "<small>" + c.note + "</small>" : "");
-          if (c.locked) {
-            b.disabled = true;
-            b.innerHTML += "<small>🔒 not stocked: " + c.missing.join(", ") + " — visit procurement</small>";
-          }
-          b.onclick = () => {
-            const r = engine.choose(c.id);
-            if (r.narrative) pushLog(r.narrative);
-            if (r.emergency) return renderEmergency(r.emergency);
-            renderVitals();
-            if (r.done) return finish();
-            renderStep();
-          };
-          btns.appendChild(b);
+      function armRow() {
+        const r = el("div", "barm");
+        const dn = selectedItem ? (devById[selectedItem] ? devById[selectedItem].name : selectedItem) : "—";
+        r.innerHTML = "<span>Armed tool: <b>" + dn + "</b></span><span>Imaging: <b>" + (imaging || "—") + "</b></span>";
+        return r;
+      }
+      function rootMenu() {
+        menu.innerHTML = ""; menu.appendChild(armRow());
+        const g = el("div", "bcmd");
+        [["Actions", actionsMenu, true], ["Bag", bagMenu], ["Imaging", imagingMenu], ["Notes", notesMenu]].forEach(o => {
+          const b = el("button", "btn" + (o[2] ? " primary" : ""), o[0]); b.onclick = o[1]; g.appendChild(b);
         });
-        prompt.appendChild(btns);
+        menu.appendChild(g);
       }
-
+      function actionsMenu() {
+        menu.innerHTML = ""; menu.appendChild(el("p", "bsub", "Pick the maneuver. Arm a tool (Bag) + imaging first if the step needs them."));
+        const sc = scroller(), st = engine.currentStep();
+        if (st && st.choices && st.choices.length) {
+          sc.appendChild(el("div", "bcat-h", "◆ This step"));
+          st.choices.forEach(c => {
+            const b = el("button", "btn amove" + (c.locked ? " locked" : ""),
+              c.label + (c.note ? "<small>" + c.note + "</small>" : "") + (c.locked ? "<small>🔒 not stocked: " + c.missing.join(", ") + "</small>" : ""));
+            if (c.locked) b.disabled = true; else b.onclick = () => doAction(c.id);
+            sc.appendChild(b);
+          });
+        }
+        if (taxonomy.length) sc.appendChild(el("div", "bcat-h", "All maneuvers"));
+        taxonomy.forEach(cat => { const h = el("button", "btn bcat", cat.name + " ›"); h.onclick = () => subMenu(cat); sc.appendChild(h); });
+        menu.appendChild(sc); menu.appendChild(backBtn(rootMenu));
+      }
+      function subMenu(cat) {
+        menu.innerHTML = ""; menu.appendChild(el("p", "bsub", cat.name));
+        const sc = scroller();
+        (cat.moves || []).forEach(m => { const b = el("button", "btn amove", m[1]); b.onclick = () => doAction(m[0]); sc.appendChild(b); });
+        menu.appendChild(sc); menu.appendChild(backBtn(actionsMenu));
+      }
+      function doAction(actionId) {
+        const r = engine.act(actionId, { item: selectedItem, imaging });
+        if (r.error) { say("⛔ " + r.error, "bad"); return; }
+        if (r.narrative) say(r.narrative);
+        renderStatus();
+        if (r.emergency) return renderEmergency(r.emergency);
+        if (r.done) return finish();
+        rootMenu();
+      }
       function renderEmergency(em) {
-        renderVitals();
-        pushLog("⚠ " + em.name + (em.note ? " (" + em.note + ")" : ""), "emerg");
-        prompt.innerHTML = "";
-        const box = el("div", "emergency");
-        box.appendChild(el("div", "step-h crit", "EMERGENCY — " + em.name));
-        box.appendChild(el("div", "teach", (em.cite ? "Incidence: " + (em.note || "") + " · " + em.cite : "")));
-        box.appendChild(el("div", "ask", "Select a rescue action:"));
-        const btns = el("div", "choices");
-        em.rescues.forEach(r => {
-          const b = el("button", "btn choice" + (r.id === "none" ? " danger" : ""), r.label);
-          b.onclick = () => {
-            const res = engine.resolveEmergency(r.id);
-            if (res.narrative) pushLog(res.narrative, r.id === "none" ? "emerg" : "good");
-            renderVitals();
-            if (res.done) return finish();
-            renderStep();
-          };
-          btns.appendChild(b);
+        say("⚠ " + em.name + (em.note ? " (" + em.note + ")" : ""), "emerg");
+        menu.innerHTML = ""; menu.appendChild(el("div", "bcat-h crit", "EMERGENCY — " + em.name));
+        if (em.cite) menu.appendChild(el("p", "bsub", (em.note ? em.note + " · " : "") + em.cite));
+        const sc = scroller();
+        em.rescues.forEach(rr => {
+          const b = el("button", "btn amove" + (rr.id === "none" ? " danger" : ""), rr.label);
+          b.onclick = () => { const res = engine.resolveEmergency(rr.id); if (res.narrative) say(res.narrative, rr.id === "none" ? "emerg" : "good"); renderStatus(); if (res.done) return finish(); rootMenu(); };
+          sc.appendChild(b);
         });
-        box.appendChild(btns);
-        prompt.appendChild(box);
+        menu.appendChild(sc);
       }
+      function bagMenu() {
+        menu.innerHTML = ""; menu.appendChild(el("p", "bsub", "Supply cart — click a tool to arm it, then use it via Actions."));
+        menu.appendChild(cartGrid(inv, devById, (id, d) => { selectedItem = id; say("Armed <b>" + d.name + "</b>."); bagMenu(); }, selectedItem));
+        menu.appendChild(backBtn(rootMenu));
+      }
+      function imagingMenu() {
+        menu.innerHTML = ""; menu.appendChild(el("p", "bsub", "Arm imaging (ultrasound adds no dose; fluoro/DSA do)."));
+        const sc = scroller();
+        [["Ultrasound", "ultrasound"], ["Fluoroscopy", "fluoro"], ["DSA run", "dsa"], ["Roadmap", "roadmap"]].forEach(o => {
+          const b = el("button", "btn amove" + (imaging === o[1] ? " on" : ""), o[0]);
+          b.onclick = () => { imaging = o[1]; engine.setImaging(o[1]); say("Imaging armed: " + o[0] + "."); rootMenu(); };
+          sc.appendChild(b);
+        });
+        menu.appendChild(sc); menu.appendChild(backBtn(rootMenu));
+      }
+      function notesMenu() {
+        menu.innerHTML = ""; const st = engine.currentStep();
+        menu.appendChild(el("p", "bsub", st ? ("Objective — " + st.prompt) : "Case objective."));
+        if (st && st.teaching) menu.appendChild(el("div", "bteach", st.teaching));
+        menu.appendChild(backBtn(rootMenu));
+      }
+      function finish() { opts.onFinish(engine.finish()); }
 
-      function finish() { const score = engine.finish(); opts.onFinish(score); }
-      pushLog("Case start. Patient prepped, sterile field up.", "good");
-      renderStep();
+      renderStatus();
+      say("Case start. Patient prepped, sterile field up.", "good");
+      rootMenu();
+    },
+  };
+
+  // --- Bag: read-only supply cart, openable in the overworld (Bag button / B) -
+  const Bag = {
+    show(p, opts) {
+      const devById = {}; (p.devices || []).forEach(d => { devById[d.id] = d; });
+      const card = el("div", "card battle bagcard");
+      card.appendChild(el("h2", "bh", "🎒 Supply Cart"));
+      card.appendChild(el("p", "bsub", "Everything you carry into a case. Buy more at Procurement; the angio Bag arms these mid-case."));
+      const owned = Object.keys(p.inventory || {}).filter(id => p.inventory[id]);
+      card.appendChild(el("div", "bsub", owned.length + " item" + (owned.length === 1 ? "" : "s") + " stocked"));
+      card.appendChild(cartGrid(p.inventory, devById, (id, d) => opts.onInspect && opts.onInspect(id, d), null));
+      const back = el("button", "btn ghost", "Close");
+      back.onclick = () => opts.onClose();
+      card.appendChild(back);
+      show(card);
     },
   };
 
@@ -645,5 +750,5 @@
     },
   };
 
-  root.IRUI = { overlay, clear, toast, Auth, EMR, Angio, Debrief, Shop, SimLab, CampusMap, Elevator, Conference, CasePick, CallRoom, Lounge };
+  root.IRUI = { overlay, clear, toast, Auth, EMR, Angio, Debrief, Shop, SimLab, CampusMap, Elevator, Conference, CasePick, CallRoom, Lounge, Bag };
 })(window);

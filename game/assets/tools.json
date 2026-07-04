@@ -1,0 +1,7 @@
+{
+  "_doc": "Tool-icon sprite atlas for the supply cart. Each device.id maps to [col,row] in tools.png (32px cells, 8 per row). Empty atlas => the engine draws the per-device_class vector glyph fallback (game/js/ui.js toolGlyph). Add a 32x32 cell + one line here to give a device real art; no code change. See docs/GENERIC_INTERACTION_DESIGN.md.",
+  "tile": 32,
+  "cols": 8,
+  "sheet": "tools.png",
+  "atlas": {}
+}
