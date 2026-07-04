@@ -165,7 +165,7 @@
       const taxonomy = (ctx.taxonomy && ctx.taxonomy.length) ? ctx.taxonomy
         : (ctx.config && ctx.config.action_taxonomy && ctx.config.action_taxonomy.categories) || [];
 
-      const card = el("div", "card battle");
+      const card = el("div", "card battle angioscreen");
       const scene = el("div", "bscene"); scene.innerHTML = battleSceneHTML();
       const statusBox = el("div", "bstatus");
       const caseBox = el("div", "bcase");
@@ -292,8 +292,11 @@
       card.appendChild(el("div", "bsub", owned.length + " item" + (owned.length === 1 ? "" : "s") + " stocked"));
       card.appendChild(cartGrid(p.inventory, devById, (id, d) => opts.onInspect && opts.onInspect(id, d), null));
       const back = el("button", "btn ghost", "Close");
-      back.onclick = () => opts.onClose();
+      const onKey = (e) => { if (e.key === "Escape" || e.key.toLowerCase() === "b") { e.stopPropagation(); e.preventDefault(); doClose(); } };
+      const doClose = () => { document.removeEventListener("keydown", onKey); clear(); opts.onClose(); };
+      back.onclick = doClose;
       card.appendChild(back);
+      document.addEventListener("keydown", onKey);
       show(card);
     },
   };

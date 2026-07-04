@@ -234,3 +234,14 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--text);
 .card.battle.bagcard{max-width:440px}
 .card.battle.bagcard .bcart{grid-template-columns:repeat(8,1fr)}
 @media(max-width:620px){.blower{flex-direction:column}.bmenu{width:100%}.bstatus{width:150px}.bcase{width:150px}}
+
+/* Angio battle = full screen (not a centered popup) */
+.card.battle.angioscreen{position:absolute;inset:0;max-width:none;width:auto;height:auto;max-height:none;
+  margin:0;border-radius:0;box-shadow:none;padding:12px 16px;box-sizing:border-box;
+  display:flex;flex-direction:column;gap:8px;overflow:hidden}
+.card.battle.angioscreen .bh{margin:0;flex:0 0 auto}
+.card.battle.angioscreen .bscene{flex:1 1 auto;height:auto;min-height:220px;margin:0}
+.card.battle.angioscreen .bsvg{left:50%;right:auto;transform:translateX(-50%);bottom:10px;width:min(60vw,640px)}
+.card.battle.angioscreen .blower{flex:0 0 auto;min-height:210px}
+.card.battle.angioscreen .bnarr{max-height:none}
+.card.battle.angioscreen .bscroll{max-height:34vh}

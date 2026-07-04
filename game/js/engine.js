@@ -24,7 +24,7 @@
     landmarkPtxMult: 5.0,        // (kept for reference; multipliers now live in step data)
     lowPltHematomaMult: 3.0,
     veryLowPltHematomaMult: 8.0,
-    fluoro: { tap: 0.3, dsa: 0.6, reposition: 0.8, us: 0.0, roadmap: 0.4, cbct: 1.2 }, // minutes per imaging act (US adds no dose)
+    fluoro: { tap: 0.3, fluoro: 0.3, dsa: 0.6, reposition: 0.8, us: 0.0, roadmap: 0.4, cbct: 1.2 }, // minutes per imaging act (US adds no dose)
     doseRatePerMin: 12,          // mGy air-kerma per fluoro minute (modeled)
     contrastDsaMl: 3,
     airEmbolismSbpDrop: 18, airEmbolismSpo2Drop: 6,
