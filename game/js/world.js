@@ -13,6 +13,8 @@
   const TILE = 32, COLS = D.COLS, ROWS = D.ROWS, WALL = 2;
   const WPX = COLS * TILE, HPX = ROWS * TILE;
   const T = { GRASS: 0, GRASS2: 1, ROAD: 2, DASH_H: 3, DASH_V: 4, SIDE: 5, PARK: 6, WATER: 7 };
+  const SKY = D.skybridges || (D.skybridge ? [D.skybridge] : []);
+  const hx = (s) => (typeof s === "string" ? parseInt(s.replace("#", ""), 16) : s);
 
   // ----- game meta over the extracted footprints ----------------------------
   const P = { biotech: 0x3f4f80, research: 0x37477a, edu: 0x4a548c, hospital: 0x8c4a52,
@@ -114,14 +116,17 @@
         }
       }
     }
-    const solid = Array.from({ length: ROWS }, (_, r2) => Array.from({ length: COLS }, (_, c) => roofOwner[r2][c] !== null || wallOwner[r2][c] !== null));
-    // terrain indices with grass variation
+    // terrain indices with grass variation ('b' = bridge over water: walkable road)
     const grid = D.terrain.map((row, r2) => row.split("").map((ch, c) => {
-      if (ch === "r") return T.ROAD;
+      if (ch === "r" || ch === "b") return T.ROAD;
       if (ch === "s") return T.SIDE;
       if (ch === "p") return T.PARK;
+      if (ch === "w") return T.WATER;
       return ((c * 7 + r2 * 13 + ((c * c + r2 * 3) % 5)) % 7) < 3 ? T.GRASS2 : T.GRASS;
     }));
+    // solids: building roofs/walls + open water (bridges stay walkable)
+    const solid = Array.from({ length: ROWS }, (_, r2) => Array.from({ length: COLS }, (_, c) =>
+      roofOwner[r2][c] !== null || wallOwner[r2][c] !== null || grid[r2][c] === T.WATER));
     // wall strips per building (contiguous top-wall runs; height 1 or 2)
     const strips = {};
     buildings.forEach(b => strips[b.id] = []);
@@ -208,7 +213,7 @@
       [[1, 0], [-1, 0], [0, 1], [0, -1]].forEach(([dy, dx]) => { if (g.roofOwner[r2 + dy] && g.roofOwner[r2 + dy][c + dx] === "ummmc") touch = true; });
     }));
     if (!touch) errors.push("msb does not touch ummmc");
-    if (!D.skybridge) errors.push("no skybridge between sherman and msb");
+    if (!SKY.length) errors.push("no skybridges");
     if (um.enter !== "Hospital") errors.push("ummmc must route to the Hospital scene");
     return errors;
   }
@@ -248,7 +253,7 @@
   function paintRoof(scene, b) {
     const key = "roof_" + b.id;
     if (scene.textures.exists(key)) return key;
-    const wall = P[b.kind] || 0x555f73, roofC = shade(wall, 0.58);
+    const wall = b.wall ? hx(b.wall) : (P[b.kind] || 0x555f73), roofC = b.roof ? hx(b.roof) : shade(wall, 0.58);
     const g = scene.make.graphics({ add: false });
     const rnd = mulberry32(b.x * 31 + b.y * 7);
     const has = (i, j) => i >= 0 && j >= 0 && i < b.h && j < b.w && b.mask[i][j];
@@ -287,7 +292,7 @@
   function paintStrip(scene, b, s, n) {
     const key = "wl_" + b.id + "_" + n;
     if (scene.textures.exists(key)) return key;
-    const wall = P[b.kind] || 0x555f73;
+    const wall = b.wall ? hx(b.wall) : (P[b.kind] || 0x555f73);
     const w = s.len * TILE, h = s.hgt * TILE;
     const g = scene.make.graphics({ add: false });
     g.fillStyle(wall, 1); g.fillRect(0, 0, w, h);
@@ -353,16 +358,7 @@
     g.fillStyle(0x2a4a66, 1); g.fillRect(1, 3, 4, 21);
     g.fillStyle(0x8a919b, 1); g.fillRect(4, 0, 22, 6); g.fillStyle(0x6e7789, 1); g.fillRect(4, 6, 22, 2);
     g.generateTexture("t_canopy", 28, 30); g.destroy();
-    if (D.skybridge) {
-      const sw = Math.max(1, D.skybridge.w) * TILE + 24;
-      g = scene.make.graphics({ add: false });
-      g.fillStyle(0x39477c, 1); g.fillRect(0, 6, sw, 30);
-      g.fillStyle(0x4a5a94, 1); g.fillRect(0, 0, sw, 8);
-      g.fillStyle(0x16202e, 1); for (let x = 5; x + 8 < sw; x += 14) g.fillRect(x, 14, 8, 14);
-      g.fillStyle(0x9fc4e0, 0.7); for (let x = 5; x + 8 < sw; x += 14) g.fillRect(x + 1, 15, 6, 4);
-      g.fillStyle(0x232c4e, 1); g.fillRect(0, 33, sw, 3);
-      g.generateTexture("t_skybridge", sw, 36); g.destroy();
-    }
+    // skybridges are drawn as graphics rects in drawBuildings (variable size/orientation)
   }
 
   // ----- overworld renderer --------------------------------------------------
@@ -383,15 +379,21 @@
         .setOrigin(0.5, 1).setAlpha(b.major ? 0.95 : 0.7).setDepth(99998);
       if (b.enter || b.lockedMsg) portals.push({ b, x: d.x, y: d.y, w: 70, h: 44 });
     });
+    if (D.helipad) scene.add.image(D.helipad.x * TILE, D.helipad.y * TILE, "t_helipad").setOrigin(0).setDepth(3);
     gg.runs.forEach(r2 => {
       const z = scene.add.zone((r2.x + r2.w / 2) * TILE, (r2.y + 0.5) * TILE, r2.w * TILE, TILE);
       scene.physics.add.existing(z, true); solids.add(z);
     });
-    if (D.skybridge) {
-      const sb = D.skybridge;
-      scene.add.image(sb.x * TILE - 12, sb.row * TILE - 6, "t_skybridge").setOrigin(0).setDepth(200000);
-      shadows.fillStyle(0x000000, 0.18).fillRect(sb.x * TILE - 8, sb.row * TILE + 30, sb.w * TILE + 16, 8);
-    }
+    const sg = scene.add.graphics().setDepth(200000);
+    SKY.forEach(sb => {
+      const x = sb.x * TILE, y = sb.y * TILE, w = (sb.w || 1) * TILE, h = (sb.h || 1) * TILE;
+      shadows.fillStyle(0x000000, 0.18).fillRect(x + 4, y + h, w, 6);
+      sg.fillStyle(0x39477c, 1).fillRect(x, y, w, h);
+      sg.fillStyle(0x4a5a94, 1).fillRect(x, y, w, 4);
+      sg.fillStyle(0x9fc4e0, 0.65);
+      for (let wx = x + 4; wx + 5 < x + w; wx += 10) sg.fillRect(wx, y + 5, 5, Math.max(4, h - 9));
+      sg.fillStyle(0x232c4e, 1).fillRect(x, y + h - 3, w, 3);
+    });
     return portals;
   }
 
@@ -400,8 +402,8 @@
     const gg = geo();
     const kindFill = (b) => b.enter ? (b.kind === "hospital" ? "#a84a56" : b.kind === "clinical" ? "#3a7a8c" : "#41609f") : "#39404d";
     let s = '<rect x="0" y="0" width="' + COLS + '" height="' + ROWS + '" fill="#152618"/>';
-    const tfill = { r: "#313947", s: "#8a9199", p: "#232b38" };
-    for (const ch of ["p", "r", "s"]) {
+    const tfill = { r: "#313947", s: "#8a9199", p: "#232b38", w: "#24486b" };
+    for (const ch of ["p", "w", "r", "s"]) {
       for (let r2 = 0; r2 < ROWS; r2++) {
         let c = 0;
         while (c < COLS) {
@@ -423,7 +425,7 @@
       s += '<g fill="' + kindFill(b) + '"' + (b.enter ? ' class="mapb" data-b="' + b.id + '"' : ' opacity="0.8"') + '><title>' + b.name + (b.enter ? " — click to travel" : "") + "</title>" + cells + "</g>";
       if (b.major) s += '<text class="maplbl" x="' + (b.x + b.w / 2) + '" y="' + (b.y - 0.8) + '" text-anchor="middle" font-size="1.9" fill="#cfd8ea">' + (b.short || b.name) + "</text>";
     });
-    if (D.skybridge) s += '<rect x="' + (D.skybridge.x - 0.3) + '" y="' + (D.skybridge.row - 0.2) + '" width="' + (D.skybridge.w + 0.6) + '" height="1.4" fill="#4a5a94"/>';
+    SKY.forEach(sb => { s += '<rect x="' + (sb.x - 0.2) + '" y="' + (sb.y - 0.2) + '" width="' + ((sb.w || 1) + 0.4) + '" height="' + ((sb.h || 1) + 0.4) + '" fill="#4a5a94"/>'; });
     return s;
   }
 
@@ -532,7 +534,7 @@
   const api = {
     TILE, COLS, ROWS, WALL, WPX, HPX, T,
     buildings, byId, doorFor, buildGrid, treeList, validate, geo,
-    labels: D.labels, helipad: D.helipad, skybridge: D.skybridge,
+    labels: D.labels, helipad: D.helipad, skybridges: SKY, skybridge: SKY[0] || null,
     ensureTextures, drawBuildings, mapSvgInner, paintInterior, shade, mulberry32,
     spawnDefault: { x: (D.spawn.x + 0.5) * TILE, y: (D.spawn.y + 0.5) * TILE },
   };
