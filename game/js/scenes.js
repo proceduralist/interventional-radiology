@@ -94,12 +94,13 @@
           if (!S.cases.length) throw new Error("no game-ready procedures");
           const startId = S.cases.some(c => c.id === S.save.lastCase) ? S.save.lastCase : S.cases[0].id;
           S.bundle = await root.IRGameData.loadCase(startId);
+          root.IREcon.ensureInventory(S.save, S.bundle.config);
+          root.IRUI.clear();
+          this.scene.start("Overworld");
         } catch (e) {
-          status.setText("Could not load case data: " + (e.message || e)); return;
+          try { console.error("startGame failed:", e); } catch (_) {}
+          status.setText("Could not start: " + ((e && e.message) || e));
         }
-        root.IREcon.ensureInventory(S.save, S.bundle.config);
-        root.IRUI.clear();
-        this.scene.start("Overworld");
       };
 
       const resume = async () => {

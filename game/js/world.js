@@ -379,7 +379,6 @@
         .setOrigin(0.5, 1).setAlpha(b.major ? 0.95 : 0.7).setDepth(99998);
       if (b.enter || b.lockedMsg) portals.push({ b, x: d.x, y: d.y, w: 70, h: 44 });
     });
-    if (D.helipad) scene.add.image(D.helipad.x * TILE, D.helipad.y * TILE, "t_helipad").setOrigin(0).setDepth(3);
     gg.runs.forEach(r2 => {
       const z = scene.add.zone((r2.x + r2.w / 2) * TILE, (r2.y + 0.5) * TILE, r2.w * TILE, TILE);
       scene.physics.add.existing(z, true); solids.add(z);

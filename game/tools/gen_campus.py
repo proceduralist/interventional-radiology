@@ -74,12 +74,19 @@ for bid, b in BLD.items():
         "wall": b["wall"], "roof": b["roof"], "accent": b["accent"], "glass": b["glass"],
     }
 
-labels = [
-    {"text":"Plantation St","x":PLANTATION,"y":4,"kind":"street"},
-    {"text":"Lake Ave","x":LAKE_AVE,"y":4,"kind":"street"},
-    {"text":"Route 9","x":8,"y":ROUTE9-1,"kind":"street"},
-    {"text":"Lake Quinsigamond","x":WATER[1],"y":40,"kind":"water"},
-]
+# labels object matches scenes.js Overworld: greens/lots [x,y,name], streets [x,y,angle,name], signs [x,y,text]
+labels = {
+    "greens": [[WATER[1]-1, 40, "Lake Quinsigamond"]],
+    "lots": [],
+    "streets": [
+        [PLANTATION, 6, -90, "Plantation St"],
+        [LAKE_AVE, 6, -90, "Lake Ave"],
+        [7, ROUTE9 - 1, 0, "Route 9"],
+        [2, NORTH_ROAD - 1, 0, "North Rd"],
+        [2, SOUTH_ROAD - 1, 0, "South Rd"],
+    ],
+    "signs": [],
+}
 
 data = {
     "COLS": COLS, "ROWS": ROWS,

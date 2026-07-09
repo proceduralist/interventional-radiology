@@ -1,7 +1,7 @@
 /* IR Casebook — Service Worker
    Offline-first precache of the app shell + data.
    Bump CACHE version whenever you update procedures.json or the app files. */
-const CACHE = "ir-casebook-v3";
+const CACHE = "ir-casebook-v5";
 
 const ASSETS = [
   "./",
@@ -50,6 +50,20 @@ self.addEventListener("fetch", event => {
   if (req.mode === "navigate") {
     event.respondWith(
       fetch(req).catch(() => caches.match("./index.html"))
+    );
+    return;
+  }
+
+  // Game code + assets under /game/: network-first so updates always propagate
+  // (the game is under active development — never serve stale JS from cache).
+  if (url.pathname.includes("/game/")) {
+    event.respondWith(
+      fetch(req)
+        .then(res => {
+          if (url.origin === location.origin) { const copy = res.clone(); caches.open(CACHE).then(c => c.put(req, copy)); }
+          return res;
+        })
+        .catch(() => caches.match(req))
     );
     return;
   }
