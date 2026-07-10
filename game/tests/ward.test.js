@@ -166,29 +166,32 @@ const engCfg = (preop, rngVals) => ({
   inventory: INV, preop,
   patient: { pmh: [], coag: { platelets: 250, inr: 2.4 }, renal: { contrastLimitMl: 300 }, labs: {}, seed: 7, __rng: seq(rngVals || []) },
 });
+const BEST14 = ["timeout", "sterile-prep", "ultrasound", "us-micropuncture", "advance-wire",
+  "local-anesthesia", "blunt-pocket", "tunnel", "measure-trim", "place-sheath",
+  "advance-cath", "connect-device", "aspirate", "dsa"];
+const TO_POCKET = BEST14.slice(0, 6); // through local-anesthesia; next act = blunt-pocket
 t("preop penalties land in the ledger and reduce the final score", () => {
-  const eng = Angio.create(engCfg({ penalties: [{ cat: "safety", delta: -6, reason: "INR 2.4 uncorrected", cite: "[1]" }], riskMods: [], postop: ["POD 2: pocket hematoma drained."] }, [0.99, 0.99, 0.99, 0.99, 0.99, 0.99, 0.99, 0.99]));
+  const eng = Angio.create(engCfg({ penalties: [{ cat: "safety", delta: -6, reason: "INR 2.4 uncorrected", cite: "[1]" }], riskMods: [], postop: ["POD 2: pocket hematoma drained."] },
+    Array(20).fill(0.99)));
   assert.ok(eng.ledger.some(l => /INR 2.4/.test(l.reason)), "penalty pre-logged");
-  ["timeout", "us", "pocket", "measure", "valsalva_gentle", "aspirate", "dsa"].forEach(a => eng.act(a));
+  BEST14.forEach(a => eng.act(a));
   const fin = eng.finish();
   assert.strictEqual(fin.breakdown.safety, 34, "40 − 6 preop penalty");
   assert.deepStrictEqual(fin.postopNotes, ["POD 2: pocket hematoma drained."], "post-op note carried to the debrief");
 });
 t("preop risk multiplier drives the roll; a resolved complication never re-fires (spec)", () => {
   // Huge mult ⇒ effective incidence ≥100% ⇒ pocket step MUST fire the hematoma.
-  const eng = Angio.create(engCfg({ penalties: [], riskMods: [{ match: "hematoma|bleed", mult: 1000 }], postop: [] }, [0.99, 0.99, 0.99, 0.99, 0.99, 0.99]));
-  eng.act("timeout"); eng.act("us");
-  const r = eng.act("pocket");
+  const eng = Angio.create(engCfg({ penalties: [], riskMods: [{ match: "hematoma|bleed", mult: 1000 }], postop: [] }, Array(10).fill(0.99)));
+  TO_POCKET.forEach(a => eng.act(a));
+  const r = eng.act("blunt-pocket");
   assert.ok(r.emergency && /hematoma/i.test(r.emergency.name), "bleeding emergency fired via preop risk");
   assert.ok(eng.ledger.some(l => /×1000 preop risk/.test(l.reason)), "roll annotated with the preop multiplier");
   eng.resolveEmergency("evac");
-  // rewind to the pocket step shape: same complication requested again → cannot re-fire
-  const again = eng.firedComps["Pocket hematoma"];
-  assert.ok(again, "complication recorded as fired");
-  const eng2 = Angio.create(engCfg({ penalties: [], riskMods: [{ match: "hematoma", mult: 1000 }], postop: [] }, [0.99, 0.99]));
+  assert.ok(eng.firedComps["Pocket hematoma"], "complication recorded as fired");
+  const eng2 = Angio.create(engCfg({ penalties: [], riskMods: [{ match: "hematoma", mult: 1000 }], postop: [] }, Array(10).fill(0.99)));
   eng2.firedComps["Pocket hematoma"] = true; // simulate already-resolved
-  eng2.act("timeout"); eng2.act("us");
-  const r2 = eng2.act("pocket");
+  TO_POCKET.forEach(a => eng2.act(a));
+  const r2 = eng2.act("blunt-pocket");
   assert.ok(!r2.emergency, "no second identical emergency in one case");
 });
 

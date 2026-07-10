@@ -62,10 +62,10 @@ t("embolization can trigger the CITED nontarget-embolization complication", () =
   assert.ok(e.ledger.some(l => /COMPLICATION: Nontarget/.test(l.reason)), "logged against the CITED row");
 });
 
-t("undertreating (unilateral) is an accepted-but-worse maneuver: proceeds, −5 technical", () => {
+t("undertreating (closing after one side) is an accepted-but-worse maneuver: proceeds, −5 technical", () => {
   const e = mk();
   ["timeout", "us-micropuncture", "dsa", "reform", "superselect", "particles"].forEach(id => e.choose(id));
-  const r = e.choose("single-side");
+  const r = e.choose("close"); // taxonomy control/close at the contralateral step = unilateral UFE
   assert.ok(!r.error, "proceeds");
   assert.ok(e.ledger.some(l => l.delta === -5 && /Unilateral/.test(l.reason)), "undertreatment penalized");
 });

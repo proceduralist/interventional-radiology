@@ -1,7 +1,40 @@
 # Ward NPCs + Preop + Progression — accuracy review sheet
 
-Built 2026-07-10 (migration `ward_preop_progression`, data_version 78). This sheet lists every
-value by data class so you can review it the way you review procedure data.
+Built 2026-07-10 (migrations `ward_preop_progression` + `taxonomy_only_actions_rekey`,
+data_version 82). This sheet lists every value by data class so you can review it the way
+you review procedure data.
+
+## Second pass (same day, per your feedback)
+
+- **No more give-away buttons.** The battle Actions menu is ONLY the nested taxonomy
+  (12 categories / ~80 moves) — the "◆ This step" answer list is gone. The Imaging root
+  command is gone too; imaging maneuvers live under Actions → Imaging like everything else,
+  so the root menu is exactly your spec: Actions / Bag / Ask For Help / Leave Procedure.
+- **Chest-port re-keyed to 14 granular taxonomy steps** (each step = one findable maneuver):
+  time-out → sterile prep → US survey → US-guided access → wire to IVC → anesthetize
+  pocket/tract → pocket (± transfuse) → tunnel → measure/trim → peel-away (air precautions)
+  → advance to CAJ → attach to port → access & test → confirm & close. Your example works
+  exactly: Actions → Procedure control → Time-out, then Actions → Imaging → Ultrasound.
+  New teaching hooks: skipping sterile prep = "not performed under sterile prep" −3;
+  skipping measure/trim sets a malposition flag (reposition needed at closure); sloppy
+  peel-away handling (step-10 default) arms a 60% MODELED air-embolism roll on delivery.
+  The old forceful-advance CAJ-perforation branch was dropped in the re-key (stress
+  mechanics still live in the Sim Lab + UFE) — say the word if you want it back as a
+  taxonomy-reachable variant.
+- **New taxonomy content (DESIGN, curate freely):** "Surgical / implant" category
+  (sterile-prep, local-anesthesia, incise, blunt-pocket, tunnel, measure-trim,
+  connect-device, close-pocket) and medications/transfuse. Fixture:
+  `game/tests/action_taxonomy.js`.
+- **UFE:** the unreachable "single-side" outcome is now taxonomy-keyed — closing after one
+  side (Procedure control → Close & dress) = the unilateral-UFE penalty.
+- **Cutscene:** a nurse now pushes the bed foot-first (rotates 90° for the westbound leg,
+  180° for the northbound leg into the elevator).
+- **Floor 3 is real rooms now:** IR, CT and Ultrasound are walled rooms with door gaps
+  (grid-aligned collision), 3/4 interior wall faces with accent stripes, equipment
+  (C-arm + OR table + monitor bank + sterile back table; CT gantry + couch + console;
+  US cart + exam bed), and staff NPC sprites (teal-scrub nurses, navy-scrub techs with
+  lead aprons, Y-sorted + solid). The sent patient lies on that room's table, the IR door
+  gets a red "in use" lamp, and room portal labels update live.
 
 ## What the update does (player-facing)
 

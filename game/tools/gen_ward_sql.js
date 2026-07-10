@@ -8,6 +8,7 @@ const path = require("path");
 const T = (f) => require(path.join(__dirname, "..", "tests", f));
 const chest = T("chestport_steps.js"), chestPreop = T("chestport_preop.js");
 const ufe = T("ufe_steps.js"), ufePreop = T("ufe_preop.js");
+const taxonomy = T("action_taxonomy.js");
 const q = (o) => "$steps$" + JSON.stringify(o) + "$steps$::jsonb";
 
 const progression = {
@@ -98,6 +99,8 @@ where procedure_id = 'uterine-fibroid-embolization';
 
 -- 4. game_config
 insert into public.game_config (key, value, data_class, citation, description) values
+ ('action_taxonomy', ${q(taxonomy)}, 'design', '',
+  'Nested IR maneuver taxonomy — the battle Actions menu is ONLY this list (no per-step answer buttons). Fixture: game/tests/action_taxonomy.js. DESIGN/MODELED; Ryan curates.'),
  ('progression', ${q(progression)}, 'design', '',
   'XP/level ladder gating which procedures spawn in ward beds. All DESIGN.'),
  ('lab_catalog', ${q(labCatalog)}, 'modeled', '',

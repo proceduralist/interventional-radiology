@@ -24,12 +24,8 @@ const byText = (sel, re) => $$(sel).find(b => re.test(b.textContent));
 
 const CONFIG = {
   scoring_weights: { safety: 40, radiation: 20, renal: 20, technical: 20 },
-  // taxonomy on config so step.blocked "cat:wire" matchers resolve in the engine
-  action_taxonomy: { categories: [
-    { id: "wire", name: "Wire", moves: [["advance-wire", "Advance guidewire"], ["exchange-wire", "Exchange wire"]] },
-    { id: "access", name: "Access & sheath", moves: [["us-micropuncture", "US-guided micropuncture"], ["landmark-x", "Landmark puncture"], ["place-sheath", "Place vascular sheath"]] },
-    { id: "imaging", name: "Imaging", moves: [["fluoro", "Fluoroscopy (spot)"], ["dsa", "DSA run"]] },
-  ] },
+  // the REAL taxonomy fixture (mirrored to the DB) — the Actions menu is only this
+  action_taxonomy: require(path.join(__dirname, "action_taxonomy.js")),
   attending_dialogue: { strike_cap: 5, hint_cap: 5,
     blocked: ["Excuse me lad, but aren't you missing a step?", "Think.", "You cannot do that yet.", "Stop.", "You clearly need to read a book. I am taking over this case."],
     kicked: "That's five hints. Scrub out and go read." },
@@ -55,16 +51,28 @@ function startBattle(onFinish, ctxExtra) {
   return engine;
 }
 const openActions = () => click(byText(".bmenu .btn", /^Actions$/));
+const pick = (catRe, moveRe) => { openActions(); click(byText(".btn.bcat", catRe)); click(byText(".btn.amove", moveRe)); };
 
-console.log("battle screen: menu, bag, imaging, actions");
+console.log("battle screen: menu, bag, actions (taxonomy-only)");
 let engine = startBattle(() => {});
 
-t("root command menu shows Actions / Bag / Imaging / Ask For Help / Leave (spec)", () => {
+t("root command menu is exactly Actions / Bag / Ask For Help / Leave Procedure (spec)", () => {
   assert.ok(win.document.querySelector(".card.battle .bscene .bsvg"), "patient + C-arm scene");
   assert.ok(win.document.querySelector(".bstatus .bbar i"), "patient stability bar (enemy HP, top-right)");
   assert.ok(win.document.querySelector(".bscene .bequip"), "equipped-item hub (top-left)");
   assert.ok(win.document.querySelector(".bscene .bcase .bmeters"), "fluoro/DAP/contrast hub (bottom-left)");
-  ["Actions", "Bag", "Imaging", "Ask For Help", "Leave Procedure"].forEach(lbl => assert.ok(byText(".bmenu .btn", new RegExp("^" + lbl + "$")), lbl + " command"));
+  ["Actions", "Bag", "Ask For Help", "Leave Procedure"].forEach(lbl => assert.ok(byText(".bmenu .btn", new RegExp("^" + lbl + "$")), lbl + " command"));
+  assert.ok(!byText(".bmenu .btn", /^Imaging$/), "Imaging is NOT a root command — it lives inside Actions");
+});
+
+t("Actions gives NO answers away: only taxonomy categories, no per-step move list", () => {
+  openActions();
+  assert.ok(!$$(".bcat-h").some(h => /This step/i.test(h.textContent)), "no 'This step' give-away header");
+  assert.strictEqual($$(".btn.amove").length, 0, "no moves visible until a category is opened");
+  assert.strictEqual($$(".btn.bcat").length, 12, "all 12 taxonomy categories listed");
+  click(byText(".btn.bcat", /Procedure control/));
+  assert.ok(byText(".btn.amove", /^Time-out$/), "moves appear only inside their category");
+  click(byText(".btn.ghost", /Back/)); click(byText(".btn.ghost", /Back/));
 });
 
 t("Bag opens the supply cart and arming a tool shows it in the equip hub", () => {
@@ -73,31 +81,20 @@ t("Bag opens the supply cart and arming a tool shows it in the equip hub", () =>
   assert.strictEqual(slots.length, 7, "one slot per carried device");
   click(slots.find(s => /chest port/.test(s.title)));       // arm the port catheter
   click(byText(".bmenu .btn", /Back/));
-  openActions(); click(byText(".btn.ghost", /Back/));       // any rerender keeps it
   assert.ok(/chest port/i.test(win.document.querySelector(".bequip").textContent), "armed tool shown top-left");
 });
 
-t("Imaging arms ultrasound (and it is offered, not just fluoro)", () => {
-  click(byText(".bmenu .btn", /^Imaging$/));
-  assert.ok(byText(".btn.amove", /Ultrasound/), "ultrasound is an imaging option");
-  click(byText(".btn.amove", /Ultrasound/));
-  assert.ok(/ultrasound/i.test(win.document.querySelector(".bequip").textContent), "ultrasound armed in equip hub");
-});
-
-t("Actions shows the step maneuvers AND the expansive nested taxonomy", () => {
+t("imaging maneuvers (incl. ultrasound) live under Actions → Imaging", () => {
   openActions();
-  assert.ok(byText(".bcat-h", /This step/), "step group present");
-  assert.ok(byText(".btn.amove", /Time-out/), "step maneuver reachable");
-  assert.ok(byText(".btn.bcat", /Access & sheath/), "taxonomy category present");
-  click(byText(".btn.bcat", /Access & sheath/));
-  assert.ok(byText(".btn.amove", /US-guided micropuncture/), "nested moves listed");
-  click(byText(".btn.ghost", /Back/));
+  click(byText(".btn.bcat", /^Imaging/));
+  assert.ok(byText(".btn.amove", /^Ultrasound$/), "ultrasound is an Actions move");
+  assert.ok(byText(".btn.amove", /DSA run/), "DSA run is an Actions move");
+  click(byText(".btn.ghost", /Back/)); click(byText(".btn.ghost", /Back/));
 });
 
 t("a possible-but-wrong maneuver proceeds and takes the default penalty", () => {
   // at step 1; a DSA run is physically possible (not in step.blocked) → default fires, advances
-  click(byText(".btn.bcat", /Imaging/));
-  click(byText(".btn.amove", /DSA run/));
+  pick(/^Imaging/, /DSA run/);
   assert.strictEqual(engine.currentStep().n, 2, "advanced despite the wrong move");
   assert.ok(engine.ledger.some(l => l.category === "technical" && l.delta < 0), "penalty logged");
 });
@@ -105,9 +102,7 @@ t("a possible-but-wrong maneuver proceeds and takes the default penalty", () => 
 console.log("battle screen: attending hard-blocks, hints, leave");
 t("a physically impossible maneuver is BLOCKED: attending pokes in, no advance", () => {
   engine = startBattle(() => {});
-  openActions();
-  click(byText(".btn.bcat", /Access & sheath/));
-  click(byText(".btn.amove", /Place vascular sheath/)); // step 1 blocked list (exact id)
+  pick(/Access & sheath/, /Place vascular sheath/); // step 1 blocked list (exact id)
   assert.strictEqual(engine.currentStep().n, 1, "did NOT advance");
   assert.strictEqual(engine.state().strikes, 1, "strike counted");
   assert.ok(win.document.querySelector(".bscene .attn .attn-bubble"), "attending appears in the scene");
@@ -118,9 +113,7 @@ t("five impossible maneuvers → the attending takes over; case fails with 0 poi
   let final = null;
   engine = startBattle((s) => { final = s; });
   for (let k = 0; k < 5; k++) {
-    openActions();
-    click(byText(".btn.bcat", /Wire/));
-    click(byText(".btn.amove", /Advance guidewire/)); // cat:wire blocked at step 1
+    pick(/^Wire ›/, /Advance guidewire/); // cat:wire blocked at step 1
     if (final) break;
   }
   assert.ok(final, "onFinish fired on takeover");
@@ -159,13 +152,24 @@ t("per-location backdrops render (bedside shows a ward room, CT shows a gantry)"
   assert.notStrictEqual(win.document.querySelector(".bsvg").innerHTML, svgBed, "distinct scenes");
 });
 
-console.log("battle screen: clean best-path run");
-t("selecting the best maneuver each step runs to a scored debrief", () => {
+console.log("battle screen: clean best-path run (14 taxonomy maneuvers)");
+t("finding the right maneuver in the taxonomy each step runs to a 100 debrief", () => {
   let final = null;
   startBattle((s) => { final = s; });
-  const move = (re) => { openActions(); click(byText(".btn.amove", re)); };
-  move(/Time-out/); move(/US-guided micropuncture \(21G\)/); move(/Anesthetize/);
-  move(/Measure against the wire/); move(/Valsalva/); move(/aspirate \+ flush/i); move(/DSA spot/);
+  [[/Procedure control/, /^Time-out$/],
+   [/Surgical/, /Chlorhexidine prep/],
+   [/^Imaging/, /^Ultrasound$/],
+   [/Access & sheath/, /Ultrasound-guided micropuncture/],
+   [/^Wire ›/, /Advance guidewire/],
+   [/Surgical/, /Infiltrate local anesthetic/],
+   [/Surgical/, /Blunt-dissect a device pocket/],
+   [/Surgical/, /Tunnel the catheter/],
+   [/Surgical/, /Measure & trim to length/],
+   [/Access & sheath/, /Place vascular sheath/],
+   [/Catheter \/ micro/, /^Advance catheter$/],
+   [/Surgical/, /Assemble \/ connect the device/],
+   [/Catheter \/ micro/, /^Aspirate$/],
+   [/^Imaging/, /DSA run/]].forEach(([c, m]) => pick(c, m));
   assert.ok(final, "onFinish fired");
   assert.strictEqual(final.total, 100, JSON.stringify(final.breakdown));
 });

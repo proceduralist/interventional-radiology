@@ -530,40 +530,103 @@
         portals.push({ x: 210, y: 510, w: 130, h: 76, label: "Staff lounge — attending's pearls", onEnter: () => openOverlay((close) =>
             root.IRUI.Lounge.show(S.bundle.procedure, { onClose: close })) });
       } else if (floor === "3") {
-        // ---- Procedure floor: IR / CT / US rooms hold ONE sent patient each ----
-        room(400, 350, 180, 120, 0x3a4a7a, 0x5a6fbf, "IR Suite");
-        this.add.image(400, 302, "t_carm").setOrigin(0.5, 0).setDepth(364);
-        room(190, 340, 120, 84, 0x4a5a3a, 0x6f8f5a, "CT Suite");
-        this.add.image(190, 288, "t_ctgantry").setOrigin(0.5, 0).setDepth(350);
-        room(640, 350, 130, 84, 0x2f4a5a, 0x4f7a9f, "Ultrasound\nRoom");
-        this.add.image(690, 310, "t_uscart").setOrigin(0.5, 0).setDepth(354);
-        room(680, 500, 150, 80, 0x4a3f6a, 0x7a6a9f, "Call Room");
-        flavor(480, 510, "Reading room", "Rows of dark monitors. Somebody is dictating very, very fast.");
+        // ---- Procedure floor: three REAL walled rooms (IR / CT / US), each with
+        //      a door gap, 3/4 interior wall face, equipment, staff NPCs, and one
+        //      table that holds the ONE patient sent from the ward. --------------
+        const WALL = 12, FACE = 44, DOORW = 46;
+        const staffNpc = (x, y, key) => {           // Y-sorted, solid, decorative staff
+          this.add.image(x, y, key).setOrigin(0.5, 1).setDepth(y);
+          solid(x, y - 5, 14, 8);
+        };
+        const procRoom = (x0, y0, w, h, name, accent) => {
+          const doorX = x0 + w / 2;
+          // interior floor + north wall face (3/4 perspective)
+          this.add.tileSprite(x0, y0, w, h, "t_lino").setOrigin(0).setDepth(1);
+          this.add.tileSprite(x0, y0, w, FACE, "t_iwall").setOrigin(0).setDepth(2);
+          const gfx = this.add.graphics().setDepth(3);
+          gfx.fillStyle(accent, 1); gfx.fillRect(x0, y0 + FACE - 6, w, 3);       // accent stripe on the face
+          gfx.fillStyle(0x1c2331, 1);
+          gfx.fillRect(x0 - WALL, y0 - WALL, w + 2 * WALL, WALL);                // top cap
+          gfx.fillRect(x0 - WALL, y0 - WALL, WALL, h + 2 * WALL);                // left wall
+          gfx.fillRect(x0 + w, y0 - WALL, WALL, h + 2 * WALL);                   // right wall
+          const gapL = doorX - DOORW / 2, gapR = doorX + DOORW / 2;
+          gfx.fillRect(x0 - WALL, y0 + h, gapL - (x0 - WALL), WALL);             // south wall, left of door
+          gfx.fillRect(gapR, y0 + h, (x0 + w + WALL) - gapR, WALL);              // south wall, right of door
+          gfx.fillStyle(0x8f959d, 1); gfx.fillRect(gapL, y0 + h, DOORW, WALL);   // door threshold
+          gfx.fillStyle(0x2b303c, 1); gfx.fillRect(gapL - 3, y0 + h, 3, WALL); gfx.fillRect(gapR, y0 + h, 3, WALL); // door jambs
+          label(this, doorX, y0 + h + WALL + 9, name, 10).setDepth(4);
+          // collision: face + walls (door gap stays open)
+          solid(x0 + w / 2, y0 + (FACE - WALL) / 2, w, FACE + WALL);             // north wall incl. visible face
+          solid(x0 - WALL / 2, y0 + h / 2, WALL, h + 2 * WALL);
+          solid(x0 + w + WALL / 2, y0 + h / 2, WALL, h + 2 * WALL);
+          solid((x0 - WALL + gapL) / 2, y0 + h + WALL / 2, gapL - (x0 - WALL), WALL);
+          solid((gapR + x0 + w + WALL) / 2, y0 + h + WALL / 2, (x0 + w + WALL) - gapR, WALL);
+          return { doorX };
+        };
+        const Y0 = 312, H = 128;
 
-        const ROOM_AT = { ct_suite: [190, 340], ir_suite: [400, 350], us_room: [640, 350] };
+        // CT Suite (x 140–320): gantry, control console, technologist
+        procRoom(140, Y0, 180, H, "CT SUITE", 0x6f8f5a);
+        this.add.image(230, Y0 + 26, "t_ctgantry").setOrigin(0.5, 0).setDepth(Y0 + 80); solid(230, Y0 + 66, 60, 30);
+        const ctT = this.add.graphics().setDepth(Y0 + 60);
+        ctT.fillStyle(0xc7cfdb, 1).fillRect(212, Y0 + 74, 36, 52); ctT.fillStyle(0x9aa3af, 1).fillRect(212, Y0 + 74, 36, 4);
+        this.add.image(168, Y0 + 96, "t_kiosk").setOrigin(0.5, 1).setDepth(Y0 + 96); solid(168, Y0 + 88, 20, 14);
+        staffNpc(285, Y0 + 104, "t_tech");
+        label(this, 168, Y0 + 104, "console", 8).setAlpha(0.55).setDepth(4);
+
+        // IR Suite (x 340–540): C-arm over the table, monitor bank, back table, nurse + tech
+        procRoom(340, Y0, 200, H, "IR SUITE", 0x5a6fbf);
+        this.add.image(440, Y0 + 20, "t_carm").setOrigin(0.5, 0).setDepth(Y0 + 78); solid(440, Y0 + 62, 44, 26);
+        this.add.image(440, Y0 + 62, "t_bed").setOrigin(0.5, 0).setDepth(Y0 + 90); solid(440, Y0 + 92, 36, 40);
+        this.add.image(356, Y0 + 4, "t_board").setOrigin(0).setDepth(3);          // monitor bank on the face
+        const backT = this.add.graphics().setDepth(Y0 + 108);
+        backT.fillStyle(0x2f6f6f, 1).fillRect(492, Y0 + 92, 40, 16); backT.fillStyle(0xe8eaee, 1).fillRect(494, Y0 + 90, 36, 4);
+        solid(512, Y0 + 100, 40, 16);                                            // sterile back table
+        staffNpc(388, Y0 + 112, "t_nurse");
+        staffNpc(505, Y0 + 78, "t_tech");
+
+        // Ultrasound Room (x 560–740): US cart, exam bed, sonographer, homely corner
+        procRoom(560, Y0, 180, H, "ULTRASOUND", 0x4f7a9f);
+        this.add.image(600, Y0 + 32, "t_uscart").setOrigin(0.5, 0).setDepth(Y0 + 76); solid(600, Y0 + 64, 30, 20);
+        this.add.image(660, Y0 + 52, "t_bed").setOrigin(0.5, 0).setDepth(Y0 + 80); solid(660, Y0 + 82, 36, 40);
+        this.add.image(716, Y0 + 96, "t_chair").setOrigin(0.5, 1).setDepth(Y0 + 96);
+        this.add.image(726, Y0 + 50, "t_plant").setOrigin(0.5, 1).setDepth(Y0 + 50);
+        staffNpc(710, Y0 + 116, "t_nurse");
+
+        // south corridor: call room + reading room
+        room(680, 520, 150, 76, 0x4a3f6a, 0x7a6a9f, "Call Room");
+        flavor(420, 545, "Reading room", "Rows of dark monitors. Somebody is dictating very, very fast.");
+
+        // one waiting patient per room, drawn on that room's table
+        const ROOM_AT = { ct_suite: [230, Y0 + 78], ir_suite: [440, Y0 + 68], us_room: [660, Y0 + 58] };
         this._roomSprites = [];
         this._refreshRooms = () => {
           this._roomSprites.forEach(sp => sp && sp.destroy());
           this._roomSprites = [];
           root.IRWard.ROOMS.forEach(loc => {
+            const portal = (this._portals || []).find(p => p.roomLoc === loc);
             const t = (S.save.rooms || {})[loc];
+            if (portal) portal.label = ROOM_LABEL[loc] + (t ? " — patient on the table" : " (no patient)");
             if (!t) return;
             const [rx, ry] = ROOM_AT[loc];
-            const bed = this.add.image(rx, ry - 14, "t_bed").setOrigin(0.5, 0).setDepth(ry + 44);
-            const pt = this.add.image(rx, ry - 6, "t_pt").setOrigin(0.5, 0).setDepth(ry + 45);
-            this._roomSprites.push(bed, pt);
+            const pt = this.add.image(rx, ry + 6, "t_pt").setOrigin(0.5, 0).setDepth(ry + 92);
+            this._roomSprites.push(pt);
+            if (loc === "ir_suite") {                                            // X-RAY IN USE lamp
+              const lamp = this.add.graphics().setDepth(4);
+              lamp.fillStyle(0xd23c3c, 1).fillCircle(463, Y0 + H + 6, 3);
+              this._roomSprites.push(lamp);
+            }
           });
         };
-        this._refreshRooms();
 
         const EMPTY_MSG = {
-          ir_suite: "The IR suite is dark. Send a patient here from the 2nd-floor ward first.",
+          ir_suite: "The IR suite is dark, table empty. Send a patient here from the 2nd-floor ward first.",
           ct_suite: "The CT gantry hums, bore empty. Send a patient here from the ward first.",
           us_room: "Gel warmer's on, room's empty. Send a patient here from the ward first.",
         };
         Object.keys(ROOM_AT).forEach(loc => {
           const [rx, ry] = ROOM_AT[loc];
-          portals.push({ x: rx, y: ry, w: loc === "ir_suite" ? 180 : 130, h: 90,
+          portals.push({ x: rx, y: ry + 40, w: 70, h: 70, roomLoc: loc,
             label: ROOM_LABEL[loc],
             onEnter: () => {
               const t = (S.save.rooms || {})[loc];
@@ -571,7 +634,7 @@
               WardFlow.operate(this, loc, t);
             } });
         });
-        portals.push({ x: 680, y: 500, w: 150, h: 80, label: "Call room — your profile", onEnter: () => openOverlay((close) =>
+        portals.push({ x: 680, y: 520, w: 150, h: 76, label: "Call room — your profile", onEnter: () => openOverlay((close) =>
             root.IRUI.CallRoom.show({ save: S.save, user: S.user, guest: S.guest, tiers: (S.bundle.config.clout_tiers || {}).tiers || [],
               level: root.IRWard.levelFor(S.bundle.config, S.save.xp || 0), cases: S.cases }, { onClose: close })) });
       } else { // basement
@@ -587,12 +650,13 @@
             root.IRUI.Shop.show({ save: S.save, devices: S.bundle.devices, config: S.bundle.config }, { onPurchase: () => persist(), onClose: close })) });
       }
 
-      spawnPlayer(this, 480, 420);
+      spawnPlayer(this, 480, floor === "3" ? 520 : 420); // floor 3: spawn in the corridor, not inside a room
       this.physics.world.setBounds(130, 232, 700, 358);
       this.physics.add.collider(this.player, solids);
       refreshHud();
       makePortals(this, portals);
-      if (this._refreshBeds) this._refreshBeds(); // initial NPC draw + live portal labels
+      if (this._refreshBeds) this._refreshBeds();   // initial NPC draw + live portal labels
+      if (this._refreshRooms) this._refreshRooms(); // waiting patients + live room labels
     },
     update() { movePlayer(this, 200); updatePortals(this); },
   };
@@ -661,19 +725,37 @@
       WardFlow.wheelAway(scene, i, loc);
     },
 
-    // Cutscene: the patient is wheeled from the bed toward the elevator (spec).
+    // Cutscene: a nurse wheels the bed to the elevator — FOOT-FIRST, so the bed
+    // reads as rolling on its wheels (angle 90 = foot left for the westbound
+    // leg, angle 180 = foot up for the northbound leg), with the nurse pushing
+    // from the head end the whole way.
     wheelAway(scene, bedIdx, loc) {
       if (scene._refreshBeds) scene._refreshBeds(); // hides the static patient (bed record already cleared)
       const [px, py] = BED_POS[bedIdx] || [480, 400];
-      const bedImg = scene.add.image(px, py, "t_bed").setOrigin(0.5, 0).setDepth(9000);
-      const ptImg = scene.add.image(px, py + 8, "t_pt").setOrigin(0.5, 0).setDepth(9001);
+      const cx = px, cy = py + 28;                   // rotate around the bed's center
+      const bedImg = scene.add.image(cx, cy, "t_bed").setOrigin(0.5).setAngle(90).setDepth(9000);
+      const ptImg = scene.add.image(cx, cy, "t_pt").setOrigin(0.5).setAngle(90).setDepth(9001);
+      const nurse = scene.add.image(cx + 40, cy, "t_nurse").setDepth(9002);      // pushing from the head end
+      const done = () => {
+        scene.tweens.add({ targets: [bedImg, ptImg, nurse], alpha: 0, duration: 300,
+          onComplete: () => { bedImg.destroy(); ptImg.destroy(); nurse.destroy(); } });
+        root.IRUI.toast("🛗 Patient transported to the " + ROOM_LABEL[loc] + " (3rd floor). Meet them there.", 3800);
+        scene.busy = false; scene.input.keyboard.resetKeys();
+      };
+      // leg 1: roll west toward the elevator bank, foot leading, nurse behind
       scene.tweens.add({
-        targets: [bedImg, ptImg], x: 240, y: 300, duration: 1500, ease: "Sine.easeIn",
+        targets: [bedImg, ptImg, nurse], x: "-=" + (cx - 240), duration: 1150, ease: "Sine.easeInOut",
         onComplete: () => {
-          scene.tweens.add({ targets: [bedImg, ptImg], alpha: 0, duration: 320,
-            onComplete: () => { bedImg.destroy(); ptImg.destroy(); } });
-          root.IRUI.toast("🛗 Patient transported to the " + ROOM_LABEL[loc] + " (3rd floor). Meet them there.", 3800);
-          scene.busy = false; scene.input.keyboard.resetKeys();
+          // pivot: swing the bed so the foot points north, nurse steps to the foot→south end
+          scene.tweens.add({ targets: [bedImg, ptImg], angle: 180, duration: 260, ease: "Sine.easeInOut" });
+          scene.tweens.add({
+            targets: nurse, x: 240, y: cy + 40, duration: 260, ease: "Sine.easeInOut",
+            onComplete: () => {
+              // leg 2: roll north into the elevator, still foot-first
+              scene.tweens.add({ targets: [bedImg, ptImg], y: 300, duration: 850, ease: "Sine.easeIn" });
+              scene.tweens.add({ targets: nurse, y: 340, duration: 850, ease: "Sine.easeIn", onComplete: done });
+            },
+          });
         },
       });
     },

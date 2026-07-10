@@ -495,6 +495,21 @@
       g.fillStyle(0x4a5262, 1); g.fillRect(0, 44, 36, 8);
       g.fillStyle(0x2b303c, 1); g.fillRect(0, 50, 36, 2);
     });
+    // staff sprites: nurse (teal scrubs) + technologist (navy scrubs, lead apron).
+    // Same 20×28 frame as t_player → identical Y-sort/feet math.
+    const staff = (key, scrub, scrubDark, hair, apron) => tex(key, 20, 28, (g) => {
+      g.fillStyle(0x000000, 0.28); g.fillEllipse(10, 26, 15, 5);
+      g.fillStyle(hair, 1); g.fillRect(5, 0, 10, 5);
+      g.fillStyle(0xd9a886, 1); g.fillRect(6, 3, 8, 7); g.fillStyle(hair, 1); g.fillRect(5, 2, 10, 2);
+      g.fillStyle(scrub, 1); g.fillRect(4, 10, 12, 9); g.fillRect(2, 11, 2, 6); g.fillRect(16, 11, 2, 6);
+      if (apron) { g.fillStyle(0x3d4550, 1); g.fillRect(5, 11, 10, 8); }        // lead apron front
+      g.fillStyle(0xd9a886, 1); g.fillRect(2, 17, 2, 2); g.fillRect(16, 17, 2, 2);
+      g.fillStyle(0xe8e4d8, 1); g.fillRect(12, 12, 2, 3);                        // badge
+      g.fillStyle(scrubDark, 1); g.fillRect(5, 19, 4, 6); g.fillRect(11, 19, 4, 6);
+      g.fillStyle(0xe8eaee, 1); g.fillRect(5, 25, 4, 2); g.fillRect(11, 25, 4, 2); // white clogs
+    });
+    staff("t_nurse", 0x2f8a80, 0x246b63, 0x5a3d22, false);
+    staff("t_tech", 0x33506e, 0x27405a, 0x1e1e20, true);
     // patient lying in a ward bed (tinted per-NPC for variety); overlays t_bed
     tex("t_pt", 32, 34, (g) => {
       g.fillStyle(0xe8c9a8, 1); g.fillCircle(16, 7, 6);          // head on the pillow

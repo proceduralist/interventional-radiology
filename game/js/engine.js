@@ -233,6 +233,12 @@
         if (eng.flags[o.ifFlag]) {
           (o.ifFlagScore || []).forEach(x => log(x.cat || x.category, x.delta, x.reason, x.cite));
           if (o.ifFlagImaging) image(o.ifFlagImaging);
+          // a skipped-precaution flag can arm a MODELED event on THIS step
+          // (e.g. open sheath at step 10 → air-embolism roll on delivery)
+          if (o.ifFlagEvent && rng() * 100 < (o.ifFlagEvent.riskPct != null ? o.ifFlagEvent.riskPct : 100)) {
+            triggerModeledEvent(o.ifFlagEvent.name, o.ifFlagEvent.decline, o.ifFlagEvent.note);
+            return o.ifFlagHit || o.hit || "Complication.";
+          }
           narrative = o.ifFlagNarrative || narrative;
         } else {
           (o.elseScore || []).forEach(x => log(x.cat || x.category, x.delta, x.reason, x.cite));

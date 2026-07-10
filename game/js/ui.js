@@ -407,17 +407,20 @@
           (st && st.prompt ? "<div class='bobj'>" + st.prompt + "</div>" : "") +
           "<div class='bmeters'>fluoro <b>" + s.accum.fluoroMin.toFixed(1) + "</b> min · DAP <b>" + (s.accum.dapGycm2 || 0).toFixed(2) + "</b>" + (dapRef ? "/" + dapRef.toFixed(2) : "") + " · contrast <b>" + s.accum.contrastMl.toFixed(0) + "</b>/" + ctx.patient.renal.contrastLimitMl + " mL</div>";
         const dn = selectedItem ? (devById[selectedItem] ? devById[selectedItem].name : selectedItem) : "—";
-        equipBox.innerHTML = "<div>🔧 <b>" + dn + "</b></div><div>📡 " + (imaging || "—") + "</div>" +
+        equipBox.innerHTML = "<div>🔧 <b>" + dn + "</b></div>" +
           (s.hints ? "<div class='bhint-ct'>💬 hints " + s.hints + "/5</div>" : "");
       }
       function say(html, kind) { const l = el("div", "bline" + (kind ? " " + kind : ""), html); narr.appendChild(l); narr.scrollTop = narr.scrollHeight; }
       const scroller = () => el("div", "bscroll");
       const backBtn = (fn) => { const b = el("button", "btn ghost", "‹ Back"); b.onclick = fn; return b; };
 
+      // Spec: exactly (1) Actions (2) Bag (3) Ask For Help (4) Leave Procedure.
+      // Imaging is NOT a separate command — imaging maneuvers live inside the
+      // Actions taxonomy (Imaging category) like every other move.
       function rootMenu() {
         menu.innerHTML = "";
         const g = el("div", "bcmd");
-        [["Actions", actionsMenu, "primary"], ["Bag", bagMenu], ["Imaging", imagingMenu],
+        [["Actions", actionsMenu, "primary"], ["Bag", bagMenu],
          ["Ask For Help", askHelp, "help"], ["Leave Procedure", leaveMenu, "danger ghostd"]].forEach(o => {
           const b = el("button", "btn " + (o[2] || ""), o[0]); b.onclick = o[1]; g.appendChild(b);
         });
@@ -449,20 +452,13 @@
         sc.appendChild(yes);
         menu.appendChild(sc); menu.appendChild(backBtn(rootMenu));
       }
+      // ONLY the nested taxonomy — no per-step answer buttons (the player must
+      // figure out the next maneuver; Ask For Help costs a hint if they can't).
       function actionsMenu() {
-        menu.innerHTML = ""; menu.appendChild(el("p", "bsub", "Pick the maneuver. Arm a tool (Bag) + imaging first if the step needs them."));
-        const sc = scroller(), st = engine.currentStep();
-        if (st && st.choices && st.choices.length) {
-          sc.appendChild(el("div", "bcat-h", "◆ This step"));
-          st.choices.forEach(c => {
-            const b = el("button", "btn amove" + (c.locked ? " locked" : ""),
-              c.label + (c.note ? "<small>" + c.note + "</small>" : "") + (c.locked ? "<small>🔒 not stocked: " + c.missing.join(", ") + "</small>" : ""));
-            if (c.locked) b.disabled = true; else b.onclick = () => doAction(c.id);
-            sc.appendChild(b);
-          });
-        }
-        if (taxonomy.length) sc.appendChild(el("div", "bcat-h", "All maneuvers"));
+        menu.innerHTML = ""; menu.appendChild(el("p", "bsub", "Find the right maneuver — category, then move."));
+        const sc = scroller();
         taxonomy.forEach(cat => { const h = el("button", "btn bcat", cat.name + " ›"); h.onclick = () => subMenu(cat); sc.appendChild(h); });
+        if (!taxonomy.length) sc.appendChild(el("div", "bsub", "(no action taxonomy configured)"));
         menu.appendChild(sc); menu.appendChild(backBtn(rootMenu));
       }
       function subMenu(cat) {
@@ -504,16 +500,6 @@
         menu.innerHTML = ""; menu.appendChild(el("p", "bsub", "Supply cart — click a tool to arm it, then use it via Actions."));
         menu.appendChild(cartGrid(inv, devById, (id, d) => { selectedItem = id; engine.selectItem(id); say("Armed <b>" + d.name + "</b>."); renderStatus(); bagMenu(); }, selectedItem));
         menu.appendChild(backBtn(rootMenu));
-      }
-      function imagingMenu() {
-        menu.innerHTML = ""; menu.appendChild(el("p", "bsub", "Arm imaging (ultrasound adds no dose; fluoro/DSA do)."));
-        const sc = scroller();
-        [["Ultrasound", "ultrasound"], ["Fluoroscopy", "fluoro"], ["DSA run", "dsa"], ["Roadmap", "roadmap"]].forEach(o => {
-          const b = el("button", "btn amove" + (imaging === o[1] ? " on" : ""), o[0]);
-          b.onclick = () => { imaging = o[1]; engine.setImaging(o[1]); say("Imaging armed: " + o[0] + "."); renderStatus(); rootMenu(); };
-          sc.appendChild(b);
-        });
-        menu.appendChild(sc); menu.appendChild(backBtn(rootMenu));
       }
       function finish() { opts.onFinish(engine.finish()); }
 

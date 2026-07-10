@@ -91,7 +91,8 @@ module.exports = [
         imaging: "fluoro", contrastMl: 6,
         complication: { name: "Ovarian insufficiency", mult: 1, decline: {} },
         ok: "Contralateral uterine artery selected and embolized to near-stasis; bilateral treatment complete.", hit: "Diffuse embolization compromises some ovarian arterial supply." },
-      "single-side": { label: "Treat only the accessed side; skip the contralateral artery", note: "Undertreatment",
+      // taxonomy-keyed: choosing control/"close" here = closing after one side (undertreatment)
+      close: { label: "Close up after treating only the accessed side", note: "Undertreatment",
         score: [{ cat: "technical", delta: -5, reason: "Unilateral UFE — high recurrence; both uterine arteries should be treated." }],
         ok: "You stop after one side." },
     },
