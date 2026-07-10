@@ -12,6 +12,11 @@
     setTimeout(() => { t.classList.remove("in"); setTimeout(() => t.remove(), 300); }, ms || 2200);
   }
   const flag = (f) => f ? '<span class="flag flag-' + (f === "H" ? "hi" : "lo") + '">' + f + '</span>' : "";
+  // Gameplay text NEVER shows article citations — [n] markers are stripped at
+  // render time (the data keeps them for the dashboard/website). The ONLY place
+  // citations appear in-game is the conference-defense dossier, where study
+  // results are presented before the research minigame (Ryan 2026-07-10).
+  const plain = (t) => String(t == null ? "" : t).replace(/\s*\[[0-9]+(?:\s*,\s*[0-9]+)*\]/g, "");
 
   // --- Auth ---------------------------------------------------------------
   const Auth = {
@@ -69,19 +74,16 @@
       if (!p.canProceed) {
         gr.classList.add("block");
         gr.innerHTML = "<strong>⛔ Cannot proceed as-is.</strong> " +
-          p.violationsIfProceed.map(v => v.text + " <span class='cite'>" + v.cite + "</span>").join(" ");
+          p.violationsIfProceed.map(v => plain(v.text)).join(" ");
       } else if (p.warnings.length) {
         gr.classList.add("warn");
         gr.innerHTML = "<strong>⚠ Review before proceeding:</strong><ul><li>" +
-          p.warnings.map(w => w.text + " <span class='cite'>" + w.cite + "</span>").join("</li><li>") + "</li></ul>";
+          p.warnings.map(w => plain(w.text)).join("</li><li>") + "</li></ul>";
       } else {
         gr.classList.add("okr");
-        gr.innerHTML = "<strong>✓ Labs within SIR periprocedural thresholds.</strong> Cleared for a low-bleeding-risk access procedure.";
+        gr.innerHTML = "<strong>✓ Labs within periprocedural thresholds.</strong> Cleared for a low-bleeding-risk access procedure.";
       }
       card.appendChild(gr);
-
-      const prov = el("div", "prov", "Patient sampled from generator: <em>" + patient.generatorName + "</em> · seed " + patient.seed + " · " + patient.dataClass);
-      card.appendChild(prov);
 
       const row = el("div", "btnrow");
       const bReroll = el("button", "btn ghost", "Next patient");
@@ -149,8 +151,6 @@
           const names = rec.pending.map(id => { const c = catalog.find(x => x.id === id); return c ? c.name : id; });
           card.appendChild(el("div", "guardrails warn", "<strong>⏳ Labs pending:</strong> " + names.join(", ") + " — results will be on the chart at your next visit."));
         }
-
-        card.appendChild(el("div", "prov", "Generator: <em>" + p.generatorName + "</em> · seed " + p.seed + " · " + p.dataClass));
 
         const row = el("div", "btnrow");
         const bGo = el("button", "btn primary", "Perform procedure →");
@@ -356,7 +356,7 @@
         const old = scene.querySelector(".attn"); if (old) old.remove();
         if (attnTimer) clearTimeout(attnTimer);
         const a = el("div", "attn" + ((opts2 && opts2.mad) ? " mad" : ""));
-        a.innerHTML = attendingSVG(opts2 && opts2.mad) + "<div class='attn-bubble'>" + text + "</div>";
+        a.innerHTML = attendingSVG(opts2 && opts2.mad) + "<div class='attn-bubble'>" + plain(text) + "</div>";
         scene.appendChild(a);
         if (!(opts2 && opts2.stay)) attnTimer = setTimeout(() => a.remove(), 4200);
       }
@@ -379,7 +379,7 @@
         equipBox.innerHTML = "<div>🔧 <b>" + dn + "</b></div>" +
           (s.hints ? "<div class='bhint-ct'>💬 hints " + s.hints + "/5</div>" : "");
       }
-      function say(html, kind) { const l = el("div", "bline" + (kind ? " " + kind : ""), html); narr.appendChild(l); narr.scrollTop = narr.scrollHeight; }
+      function say(html, kind) { const l = el("div", "bline" + (kind ? " " + kind : ""), plain(html)); narr.appendChild(l); narr.scrollTop = narr.scrollHeight; }
       const scroller = () => el("div", "bscroll");
       const backBtn = (fn) => { const b = el("button", "btn ghost", "‹ Back"); b.onclick = fn; return b; };
 
@@ -454,9 +454,9 @@
         rootMenu();
       }
       function renderEmergency(em) {
-        say("⚠ " + em.name + (em.note ? " (" + em.note + ")" : ""), "emerg");
+        say("⚠ " + em.name + (em.note ? " (" + plain(em.note) + ")" : ""), "emerg");
         menu.innerHTML = ""; menu.appendChild(el("div", "bcat-h crit", "EMERGENCY — " + em.name));
-        if (em.cite) menu.appendChild(el("p", "bsub", (em.note ? em.note + " · " : "") + em.cite));
+        if (em.note) menu.appendChild(el("p", "bsub", plain(em.note))); // no citations in-game
         const sc = scroller();
         em.rescues.forEach(rr => {
           const b = el("button", "btn amove" + (rr.id === "none" ? " danger" : ""), rr.label);
@@ -523,7 +523,7 @@
 
       const tel = score.telemetry;
       const dapStr = tel.referenceDapGycm2
-        ? "DAP " + (tel.dapGycm2 || 0).toFixed(2) + " / " + tel.referenceDapGycm2.toFixed(2) + " Gy·cm² ref <span class='tag cited'>CITED</span>"
+        ? "DAP " + (tel.dapGycm2 || 0).toFixed(2) + " / " + tel.referenceDapGycm2.toFixed(2) + " Gy·cm² ref"
         : "DAP " + (tel.dapGycm2 || 0).toFixed(2) + " Gy·cm²";
       card.appendChild(el("div", "telemetry-sum",
         dapStr + " · Fluoro " + tel.fluoroMin.toFixed(1) + " min (sim) · Contrast " + tel.contrastMl.toFixed(0) +
@@ -535,15 +535,16 @@
       if (!deducts.length) led.appendChild(el("div", "ll good", "Flawless — no deductions. Textbook port."));
       deducts.forEach(l => {
         const sign = l.delta ? (l.delta > 0 ? "+" : "") + l.delta : "";
+        // no citation spans in the debrief — the reason stands on its own
         led.appendChild(el("div", "ll " + (l.category === "event" ? "emerg" : "bad"),
-          "<b>" + (sign ? sign + " " : "") + "</b>" + l.reason + (l.cite ? " <span class='cite'>" + l.cite + "</span>" : "")));
+          "<b>" + (sign ? sign + " " : "") + "</b>" + plain(l.reason)));
       });
       card.appendChild(led);
 
       if ((score.postopNotes || []).length) {
         const po = el("div", "ledger");
         po.appendChild(el("h4", null, "Post-op course"));
-        score.postopNotes.forEach(n => po.appendChild(el("div", "ll emerg", "🏥 " + n)));
+        score.postopNotes.forEach(n => po.appendChild(el("div", "ll emerg", "🏥 " + plain(n))));
         card.appendChild(po);
       }
 
@@ -591,8 +592,8 @@
           const dims = [d.french_size ? d.french_size + "F" : null, d.length_cm ? d.length_cm + " cm" : null, d.coating, d.tip_shape].filter(Boolean).join(" · ");
           row.appendChild(el("div", "shop-info",
             "<b>" + d.name + "</b> <span class='tag design'>" + d.device_class + "</span>" +
-            "<small>" + dims + (d.spec_source ? " <span class='cite'>" + d.spec_source + "</span>" : "") + "</small>" +
-            (d.stiffness ? "<small class='scales'>stiffness " + d.stiffness + " · lubricity " + d.lubricity + " · track " + d.trackability + " · support " + d.support + " · vis " + d.visibility + " <span class='tag modeled'>MODELED</span></small>" : "")));
+            "<small>" + dims + "</small>" + // no source citations in-game
+            (d.stiffness ? "<small class='scales'>stiffness " + d.stiffness + " · lubricity " + d.lubricity + " · track " + d.trackability + " · support " + d.support + " · vis " + d.visibility + "</small>" : "")));
           const buyBox = el("div", "shop-buy");
           if (E.owns(save, d.id)) buyBox.appendChild(el("span", "owned-tag", "✓ stocked"));
           else {
@@ -660,7 +661,7 @@
       // ---- Spec Bench ----
       const spec = () => {
         body.innerHTML = "";
-        body.appendChild(el("p", "sub", "Device specifications. Dimensions are <span class='tag cited'>CITED</span> when an IFU/source is attached; gameplay scales are <span class='tag modeled'>MODELED</span> with a stated basis."));
+        body.appendChild(el("p", "sub", "Device specifications and bench simulation parameters."));
         const selD = el("select");
         devices.forEach(d => selD.appendChild(new Option(d.name + (E.owns(ctx.save, d.id) ? " ✓" : " (not stocked)"), d.id)));
         const out = el("div", "bench-out");
@@ -674,12 +675,11 @@
             (d.coating ? "<div class='lab'>Coating <b>" + d.coating + "</b></div>" : "") +
             (d.tip_shape ? "<div class='lab'>Tip <b>" + d.tip_shape + "</b></div>" : "") +
             (d.material ? "<div class='lab'>Material <b>" + d.material + "</b></div>" : "") +
-            "<p class='cite'>" + (d.spec_source || "no source attached") + "</p>" +
-            (d.stiffness ? "<h4>Simulation parameters <span class='tag modeled'>MODELED</span></h4>" +
+            // spec_source / modeled_basis stay in the data for the dashboard — not shown in-game
+            (d.stiffness ? "<h4>Simulation parameters</h4>" +
               "<div class='lab'>Stiffness <b>" + d.stiffness + "</b></div><div class='lab'>Lubricity <b>" + d.lubricity + "</b></div>" +
               "<div class='lab'>Trackability <b>" + d.trackability + "</b></div><div class='lab'>Support <b>" + d.support + "</b></div>" +
-              "<div class='lab'>Visibility <b>" + d.visibility + "</b></div>" +
-              "<p class='prov'>Basis: " + (d.modeled_basis || "—") + "</p>" : "") +
+              "<div class='lab'>Visibility <b>" + d.visibility + "</b></div>" : "") +
             "</div>";
         };
         selD.onchange = run;
@@ -690,7 +690,7 @@
       const embolic = () => {
         body.innerHTML = "";
         const pd = ctx.config.packing_density || {};
-        body.appendChild(el("p", "sub", "Coil packing-density sandbox — published volumetric formula <span class='tag cited'>CITED</span>: <span class='cite'>" + (ctx.configMeta && ctx.configMeta.packing_density_citation || "see codex") + "</span>"));
+        body.appendChild(el("p", "sub", "Coil packing-density sandbox — volumetric packing calculator."));
         const f = el("div", "bench-pick embolic-form");
         const mkNum = (ph, val) => { const i = el("input"); i.type = "number"; i.placeholder = ph; i.value = val; i.step = "0.1"; i.min = "0"; return i; };
         const dMm = mkNum("aneurysm ⌀ (mm)", 7);
@@ -711,7 +711,7 @@
         body.append(f, out); run();
         const po = ctx.config.particle_occlusion || {};
         const pbox = el("div", "emr-box particle-demo");
-        pbox.innerHTML = "<h4>Particle size vs occlusion level <span class='tag modeled'>MODELED</span></h4>" +
+        pbox.innerHTML = "<h4>Particle size vs occlusion level</h4>" +
           "<p class='sub'>" + (po.note || "") + "</p>" +
           "<table class='bench-table'>" + ((po.bands || []).map(b => "<tr><td>" + b.range_um + " µm</td><td>" + b.level + "</td></tr>").join("")) + "</table>";
         body.appendChild(pbox);

@@ -358,6 +358,24 @@
     g.fillStyle(0x2a4a66, 1); g.fillRect(1, 3, 4, 21);
     g.fillStyle(0x8a919b, 1); g.fillRect(4, 0, 22, 6); g.fillStyle(0x6e7789, 1); g.fillRect(4, 6, 22, 2);
     g.generateTexture("t_canopy", 28, 30); g.destroy();
+    // ambient street traffic — near-white bodies, tinted per instance (3/4 top-down)
+    g = scene.make.graphics({ add: false });   // faces east; setFlipX(true) = westbound
+    g.fillStyle(0x000000, 0.25); g.fillEllipse(17, 15, 30, 6);
+    g.fillStyle(0xf2f2f2, 1); g.fillRoundedRect(2, 4, 30, 9, 3);
+    g.fillStyle(0xd9e6f2, 1); g.fillRect(8, 1, 15, 6);
+    g.fillStyle(0x1b2a38, 1); g.fillRect(9, 2, 5, 4); g.fillRect(16, 2, 6, 4);
+    g.fillStyle(0x14181e, 1); g.fillRect(6, 12, 6, 4); g.fillRect(22, 12, 6, 4);
+    g.fillStyle(0xfff2b0, 1); g.fillRect(30, 6, 2, 3);
+    g.fillStyle(0xb03a2a, 1); g.fillRect(2, 6, 2, 3);
+    g.generateTexture("t_car_h", 34, 18); g.destroy();
+    g = scene.make.graphics({ add: false });   // faces south; setFlipY(true) = northbound
+    g.fillStyle(0x000000, 0.25); g.fillEllipse(9, 31, 14, 5);
+    g.fillStyle(0xf2f2f2, 1); g.fillRoundedRect(3, 2, 12, 28, 3);
+    g.fillStyle(0xd9e6f2, 1); g.fillRect(4, 10, 10, 5);
+    g.fillStyle(0x1b2a38, 1); g.fillRect(4, 16, 10, 8);
+    g.fillStyle(0x14181e, 1); g.fillRect(1, 6, 3, 6); g.fillRect(14, 6, 3, 6); g.fillRect(1, 22, 3, 6); g.fillRect(14, 22, 3, 6);
+    g.fillStyle(0xfff2b0, 1); g.fillRect(4, 29, 3, 2); g.fillRect(11, 29, 3, 2);
+    g.generateTexture("t_car_v", 18, 34); g.destroy();
     // skybridges are drawn as graphics rects in drawBuildings (variable size/orientation)
   }
 

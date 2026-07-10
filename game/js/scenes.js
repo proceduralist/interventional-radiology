@@ -274,6 +274,31 @@
         }
       });
 
+      // --- street traffic: cars loop both ways along every 3-wide road -------
+      const RD = root.IRWorldData && root.IRWorldData.roads;
+      if (RD) {
+        const CAR_TINTS = [0xd05a4a, 0x4a7ad0, 0xd8b84a, 0x9aa4b0, 0x4aa06a, 0xcfd4da, 0x8a6ad0];
+        const lane = 0.62 * TILE;              // right-hand traffic, one lane each way
+        const car = (horiz, center, dir) => {
+          const tint = CAR_TINTS[(Math.random() * CAR_TINTS.length) | 0];
+          const dur = 13000 + Math.random() * 10000;
+          if (horiz) {
+            const y = center * TILE + TILE / 2 + (dir > 0 ? lane : -lane);
+            const c = this.add.image(dir > 0 ? -50 : W.WPX + 50, y, "t_car_h")
+              .setTint(tint).setFlipX(dir < 0).setDepth(y);
+            this.tweens.add({ targets: c, x: dir > 0 ? W.WPX + 50 : -50, duration: dur, repeat: -1, delay: Math.random() * dur });
+          } else {
+            const x = center * TILE + TILE / 2 + (dir > 0 ? -lane : lane);
+            const c = this.add.image(x, dir > 0 ? -60 : W.HPX + 60, "t_car_v")
+              .setTint(tint).setFlipY(dir < 0).setDepth(0);
+            this.tweens.add({ targets: c, y: dir > 0 ? W.HPX + 60 : -60, duration: dur * 1.15, repeat: -1,
+              delay: Math.random() * dur, onUpdate: () => c.setDepth(c.y) });
+          }
+        };
+        [RD.north, RD.south, RD.route9].forEach(cy => [1, -1].forEach(dir => { car(true, cy, dir); car(true, cy, dir); }));
+        [RD.plantation, RD.lakeAve].forEach(cx => [1, -1].forEach(dir => car(false, cx, dir)));
+      }
+
       // --- trees (Y-sorted, trunk-only collision)
       W.treeList().forEach(t => {
         const tx = (t.c + 0.5) * TILE, ty = (t.r + 1) * TILE;

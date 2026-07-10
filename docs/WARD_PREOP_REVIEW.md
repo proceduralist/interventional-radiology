@@ -89,6 +89,21 @@ re-rolls in the same case. Completed cases pay XP (score ÷ 2); leveling unlocks
   the NW) with stacks, reading tables, studying students, and a librarian to talk to; the
   lecture hall is an auditorium with speaker + audience.
 
+## Fourth pass (same day): streets + traffic, no in-game citations
+
+- **Streets are 3 tiles wide** (all five: North Rd, South Rd, Route 9, Plantation, Lake Ave),
+  with sidewalks re-flanked, 3-wide water bridges, and the spawn point moved off the asphalt.
+  `gen_campus.py` regenerates it (its output path is now portable, not hardcoded to a sandbox).
+- **Car traffic:** tinted cars loop in both directions on every street (right-hand lanes,
+  randomized colors/speeds/offsets, Y-sorted, crossing the bridges). Ambient only — no
+  collisions with the player.
+- **No article citations anywhere in gameplay.** `[n]` markers are stripped at render time
+  (battle console, attending hints, debrief ledger, emergency notes); citation spans removed
+  from the debrief, shop (spec sources), sim lab (Sluzewski line, IFU lines), and the legacy
+  EMR. The data keeps all cite fields for the dashboard/website. The ONLY in-game citation
+  surface is the **conference-defense dossier** — study results + PMID shown before the
+  research minigame, exactly per your rule.
+
 ## CITED (verify the source text)
 
 - **Chest-port preop rules** — cited to the chapter you provided ([1] in the existing style):
