@@ -184,7 +184,8 @@
       if (id === "platelets" && patient.coag && ov.value != null) patient.coag.platelets = ov.value;
     });
     if (rec.contra) {
-      patient.pmh = patient.pmh.concat(["⚠ " + rec.contra.label]);
+      // The chart carries only the raw findings (nursing note) — never a labeled
+      // red flag. The player must recognize the contraindication themselves.
       patient.contraNote = rec.contra.emr;
     }
     return patient;

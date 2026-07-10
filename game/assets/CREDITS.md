@@ -9,7 +9,7 @@ pack here before committing the files:
 
 | Asset | Pack / author | License | Source URL |
 |-------|---------------|---------|------------|
-| _(none yet — procedural placeholders)_ | — | — | — |
+| `npcs.png` (8-character medical NPC walk sheet, 80×120/frame, RPG-Maker layout) | "Generic Doctor NPCs" — supplied by Ryan (`sprites/`) | **VERIFY before public deploy** — record pack origin + license here | — |
 
 Rules:
 - CC0 or explicitly free-for-commercial only; no rips.

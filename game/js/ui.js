@@ -131,12 +131,15 @@
           labLine("Creatinine", L.creatinine, "mg/dL") + labLine("eGFR", L.egfr, "") +
           labLine("Platelets", L.platelets, "×10⁹/L") + labLine("INR", L.inr, "") +
           (L.ptt ? labLine("PTT", L.ptt, "s") : "") + labLine("Hgb", L.hemoglobin, "g/dL")));
+        // NO interpretive banners anywhere on this card (design rule: the chart
+        // shows raw data — H/L flags, notes, results — and the player has to
+        // notice what's unsafe themselves; consequences surface at the debrief).
+        // The nursing note is ALWAYS present so its mere existence signals nothing.
+        grid.appendChild(el("div", "emr-box", "<h4>Nursing note (overnight)</h4><p>" +
+          (p.contraNote || "Uneventful night. Tolerating PO intake; ambulating with assistance. IV site clean.") + "</p>"));
         grid.appendChild(el("div", "emr-box", "<h4>Imaging</h4><p>" + p.imagingNote + "</p>" +
           "<h4>Contrast budget</h4><p>eGFR " + p.renal.egfr + " → <b>" + p.renal.riskTier.replace(/_/g, " ") + "</b>. Cigarroa V<sub>max</sub> <b>" + p.renal.contrastLimitMl + " mL</b>.</p>"));
         card.appendChild(grid);
-
-        if (p.contraNote) card.appendChild(el("div", "guardrails block", "<strong>🚩 " + (ev.contra ? ev.contra.label : "Red flag") + ".</strong> " + p.contraNote +
-          (ev.contra && ev.contra.cite ? " <span class='cite'>" + ev.contra.cite + "</span>" : "")));
 
         if ((opts.resolvedNotes || []).length)
           card.appendChild(el("div", "guardrails okr", "<strong>🧪 Lab results back:</strong><ul><li>" +
@@ -147,20 +150,6 @@
           card.appendChild(el("div", "guardrails warn", "<strong>⏳ Labs pending:</strong> " + names.join(", ") + " — results will be on the chart at your next visit."));
         }
 
-        const gr = el("div", "guardrails");
-        const labViol = ev.violations.filter(v => !ev.contra || v.label !== ev.contra.label);
-        if (ev.contra) {
-          gr.classList.add("block");
-          gr.innerHTML = "<strong>⛔ Unfixable contraindication.</strong> The right call is to recommend against this procedure.";
-        } else if (labViol.length) {
-          gr.classList.add("warn");
-          gr.innerHTML = "<strong>⚠ Not yet optimized:</strong><ul><li>" +
-            labViol.map(v => v.text + " <span class='cite'>" + v.cite + "</span>").join("</li><li>") + "</li></ul>";
-        } else {
-          gr.classList.add("okr");
-          gr.innerHTML = "<strong>✓ Medically optimized.</strong> Preop parameters meet the procedure's thresholds.";
-        }
-        card.appendChild(gr);
         card.appendChild(el("div", "prov", "Generator: <em>" + p.generatorName + "</em> · seed " + p.seed + " · " + p.dataClass));
 
         const row = el("div", "btnrow");
@@ -168,7 +157,7 @@
         const bLabs = el("button", "btn", "🧪 Order lab work");
         const bNo = el("button", "btn", "Recommend against procedure");
         const bLater = el("button", "btn ghost", "Come back later");
-        bGo.onclick = () => (labViol.length || ev.contra) ? confirmProceed() : opts.onPerform();
+        bGo.onclick = () => opts.onPerform();   // no confirm, no warning — their call
         bLabs.onclick = () => labMenu();
         bNo.onclick = () => confirmTurnDown();
         bLater.onclick = () => opts.onLater();
@@ -199,26 +188,6 @@
         show(card);
       };
 
-      const confirmProceed = () => {
-        card.innerHTML = "";
-        card.appendChild(el("h2", null, "⚠ Proceed against preop standards?"));
-        const box = el("div", "guardrails warn");
-        box.innerHTML = "<strong>If you scrub in now:</strong><ul><li>" +
-          ev.violations.map(v => v.text + " <span class='cite'>" + v.cite + "</span>").join("</li><li>") +
-          "</li></ul><p>You will lose points for deviating from the standard of care" +
-          (ev.riskMods.length ? ", and the related complication risk is increased for this case" : "") +
-          (ev.postop.length ? ". The patient is at risk of a post-op adverse outcome" : "") + ".</p>";
-        card.appendChild(box);
-        const row = el("div", "btnrow");
-        const go = el("button", "btn danger", "Proceed anyway");
-        const back = el("button", "btn ghost", "‹ Reconsider");
-        go.onclick = () => opts.onPerform();
-        back.onclick = () => main();
-        row.append(go, back);
-        card.appendChild(row);
-        show(card);
-      };
-
       const confirmTurnDown = () => {
         card.innerHTML = "";
         card.appendChild(el("h2", null, "Recommend against the procedure?"));
@@ -242,12 +211,12 @@
     show(procedure, rooms, opts) {
       const card = el("div", "card casepick");
       card.appendChild(el("h2", null, "Where do you perform it?"));
-      card.appendChild(el("p", "sub", "Pick the standard-of-care location for <b>" + procedure.title + "</b>. The wrong room costs points — and the patient still has to be worked on there."));
+      card.appendChild(el("p", "sub", "Book a venue for <b>" + procedure.title + "</b>."));
       const col = el("div", "elevfloors");
       const OPTS = [
         ["ir_suite", "IR Suite", "Fluoroscopy + full sterile setup, 3rd floor"],
-        ["ct_suite", "CT Suite", "CT guidance, 3rd floor"],
-        ["us_room", "Ultrasound Room", "Dedicated US room, 3rd floor"],
+        ["ct_suite", "CT Suite", "CT guidance, 4th floor"],
+        ["us_room", "Ultrasound Room", "Dedicated US room, 5th floor"],
         ["bedside", "Bedside", "Do it here in the ward bed"],
       ];
       OPTS.forEach(([id, name, desc]) => {
@@ -504,11 +473,9 @@
       function finish() { opts.onFinish(engine.finish()); }
 
       renderStatus();
+      // No warnings about preop violations or venue here — the player has to
+      // notice problems themselves; consequences appear in the debrief ledger.
       say("Case start — " + LOC_NAME[location] + ". " + (location === "bedside" ? "You gown up at the bedside." : "The patient is on the table."), "good");
-      if (ctx.preopViolations && ctx.preopViolations.length)
-        say("⚠ Proceeding despite: " + ctx.preopViolations.map(v => v.label).join(", ") + " — related complication risk is UP.", "bad");
-      if (ctx.wrongLocation)
-        say("⚠ " + ctx.wrongLocation, "bad");
       rootMenu();
     },
   };

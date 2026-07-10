@@ -510,6 +510,7 @@
     });
     staff("t_nurse", 0x2f8a80, 0x246b63, 0x5a3d22, false);
     staff("t_tech", 0x33506e, 0x27405a, 0x1e1e20, true);
+    staff("t_attending", 0xe8eaee, 0x39404d, 0xaab2bc, false); // white coat, gray hair (fallback if the NPC sheet fails to load)
     // patient lying in a ward bed (tinted per-NPC for variety); overlays t_bed
     tex("t_pt", 32, 34, (g) => {
       g.fillStyle(0xe8c9a8, 1); g.fillCircle(16, 7, 6);          // head on the pillow

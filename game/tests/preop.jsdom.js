@@ -40,8 +40,8 @@ const mkPatient = () => ({
   imagingNote: "Right IJ patent.", generatorName: "test-gen", seed: 42, dataClass: "TEST",
 });
 
-console.log("preop consult card");
-t("shows the 4 spec options at a clean bedside", () => {
+console.log("preop consult card (design rule: NOTHING highlights what's wrong)");
+t("shows the 4 spec options; a clean chart carries a mundane nursing note, no banner", () => {
   const p = mkPatient();
   const rec = { seed: 42, procId: "chest-port", labOverrides: {}, pending: [], contra: null };
   const ev = win.IRWard.evalPreop(p, rec, PREOP);
@@ -52,29 +52,27 @@ t("shows the 4 spec options at a clean bedside", () => {
   assert.ok(byText("button", /Order lab work/i), "Order Lab Work");
   assert.ok(byText("button", /Recommend against/), "Recommend against procedure");
   assert.ok(byText("button", /Come back later/i), "Come Back Later");
-  assert.ok(/Medically optimized/.test(win.document.body.textContent), "clean banner");
+  assert.ok(/Nursing note/.test(win.document.body.textContent), "nursing note box always present");
+  assert.ok(!/Medically optimized/i.test(win.document.body.textContent), "no all-clear banner (its absence would be a tell)");
   click(byText("button", /Perform procedure/));
-  assert.strictEqual(performed, 1, "clean patient goes straight through (no confirm)");
+  assert.strictEqual(performed, 1, "goes straight through");
   click(byText("button", /Come back later/i));
   assert.strictEqual(later, 1);
   win.IRUI.clear();
 });
 
-t("missing INR renders as not-on-file and violations force a proceed-anyway confirm", () => {
+t("missing INR shows only as raw chart data — no warning, no confirm gate", () => {
   const p = mkPatient();
   const rec = { seed: 1, procId: "chest-port", labOverrides: { inr: { missing: true } }, pending: [], contra: null };
   win.IRWard.applyOverrides(p, rec);
   const ev = win.IRWard.evalPreop(p, rec, PREOP);
+  assert.ok(ev.penalties.length, "the engine still knows (scored at debrief)");
   let performed = 0;
   win.IRUI.Preop.show(p, PROC, ev, rec, { bedNo: 1, config: CONFIG, onPerform: () => performed++, onOrderLab: () => {}, onTurnDown: () => {}, onLater: () => {} });
-  assert.ok(/not on file/.test(win.document.body.textContent), "chart shows the gap");
-  assert.ok(/Not yet optimized/.test(win.document.body.textContent), "warning banner");
+  assert.ok(/not on file/.test(win.document.body.textContent), "chart shows the gap — the player must notice it");
+  assert.ok(!/Not yet optimized|outside the preop goal|Proceed against/i.test(win.document.body.textContent), "no interpretation anywhere");
   click(byText("button", /Perform procedure/));
-  assert.strictEqual(performed, 0, "blocked behind the confirm");
-  assert.ok(/Proceed against preop standards/.test(win.document.body.textContent), "confirm screen");
-  assert.ok(/lose points/.test(win.document.body.textContent), "consequences spelled out");
-  click(byText("button", /Proceed anyway/));
-  assert.strictEqual(performed, 1, "spec: you can still perform it");
+  assert.strictEqual(performed, 1, "no confirm gate — their call, consequences at debrief");
   win.IRUI.clear();
 });
 
@@ -98,18 +96,20 @@ t("Order Lab Work lists the catalog; ordering marks it pending until the next vi
   win.IRUI.clear();
 });
 
-t("contraindicated patient: red-flag chart note, decline framed as the right call", () => {
+t("contraindicated patient: findings live in the nursing note only — nothing names the problem", () => {
   const p = mkPatient();
   const rec = { seed: 1, procId: "chest-port", labOverrides: {}, pending: [], contra: PREOP.contraindications[0] };
   win.IRWard.applyOverrides(p, rec);
   const ev = win.IRWard.evalPreop(p, rec, PREOP);
-  assert.ok(ev.shouldDecline, "ward says decline");
+  assert.ok(ev.shouldDecline, "the engine still knows declining is correct");
   let turned = 0;
   win.IRUI.Preop.show(p, PROC, ev, rec, { bedNo: 2, config: CONFIG, onPerform: () => {}, onOrderLab: () => {}, onTurnDown: () => turned++, onLater: () => {} });
-  assert.ok(/blood culture bottles growing/.test(win.document.body.textContent), "EMR carries the contra flavor");
-  assert.ok(/Unfixable contraindication/.test(win.document.body.textContent), "banner nudges the decline");
+  const body = win.document.body.textContent;
+  assert.ok(/blood culture bottles growing/.test(body), "raw findings on the chart (the player must recognize them)");
+  assert.ok(!/Unfixable contraindication|Bacteremia \/ sepsis|Red flag|🚩/i.test(body), "the diagnosis is never named for you");
+  assert.ok(!p.pmh.some(x => /⚠/.test(x)), "no warning glyph smuggled into the PMH");
   click(byText("button", /Recommend against/));
-  assert.ok(/Turning away an operable/.test(win.document.body.textContent) || /costs clout/.test(win.document.body.textContent), "confirm explains the stakes");
+  assert.ok(/costs clout/.test(win.document.body.textContent), "confirm states the generic rule, not this patient's answer");
   click(byText("button", /discharge from the IR list/i));
   assert.strictEqual(turned, 1, "turn-down callback fired");
   win.IRUI.clear();

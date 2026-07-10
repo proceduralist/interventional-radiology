@@ -53,6 +53,42 @@ lines; 5 strikes → "I am taking over this case", 0 points. A resolved complica
 re-rolls in the same case. Completed cases pay XP (score ÷ 2); leveling unlocks higher
 `min_level` procedures on the ward. Beds respawn 2–5 min after emptying (your compressed pick).
 
+## Third pass (same day): discovery rule, floors, NPC cast, real lobbies
+
+- **Nothing highlights what's wrong (your rule).** The bedside consult has NO banners, no
+  "not yet optimized," no red contraindication box, no proceed-anyway confirm, and no
+  "proceeding despite X" console line at case start. The chart shows raw data only: H/L lab
+  flags (authentic EMR behavior), "— not on file" gaps, and an always-present overnight
+  nursing note that carries the contraindication findings in plain clinical language
+  (fever + GNR cultures; site erythema; β-hCG…) without naming the diagnosis. All scoring,
+  risk multipliers, and post-op consequences still apply — they surface at the debrief.
+- **Hospital re-floored:** B sim lab/procurement · 1 lobby · 2 wards · 3 IR · 4 CT · 5 US ·
+  6 staff lounge + call rooms. Each procedure floor is one big walled suite. Floor 6: west
+  half is the attendings' lounge (couch, coffee, table, two attendings wandering, one at
+  the pot — pearls kiosk lives here now); east half is three call rooms — two post-call
+  residents asleep, and YOUR empty room opens the progress/achievements screen.
+- **Basement built out:** Sim Lab (flow bench, SimMan torso, monitors, sim tech) and
+  Procurement (stock shelving, order desk, supply clerk) are real walled rooms.
+- **Fixed:** ward patients no longer appear on other floors (stale per-floor refresh
+  callbacks survived scene.restart — now cleared on every floor change).
+- **Animated NPC cast:** your sprite sheet (8 characters, 3-frame walk × 4 directions) now
+  drives every staff NPC — walking, talking/working idle animations, role-mapped
+  (attendings, doctors, surgical residents in scrubs, nurses, seniors, visitors). Sheet is
+  at `game/assets/npcs.png` (**license row in CREDITS.md needs your verification**). The
+  old procedural sprites remain as an automatic fallback if the sheet fails to load.
+  Babies/students aren't in this 8-character sheet — say the word and I'll generate a
+  matching second sheet (animated-sprite-gen) for parents-with-babies, students, etc.
+- **Lobby sign-posts are now real rooms**, themed from the existing POI data: Sherman's
+  cafe is a coffee shop (counter, espresso machine, animated barista, seated customers —
+  ordering costs 2 funds and pulls a random menu item) and its auditorium has a stage,
+  a randomly generated speaker mid-lecture, and randomly generated seated audience (the
+  conference defense still starts at the stage). Labs get benches/glassware/patrolling
+  researchers + a microscope to poke; clinics get an exam bed/curtain/nurse; offices get
+  desks. Med School specifics: the **corridor to UMass Memorial is real SE double doors
+  that walk you straight into the hospital lobby**, the **library is upstairs** (stairs in
+  the NW) with stacks, reading tables, studying students, and a librarian to talk to; the
+  lecture hall is an auditorium with speaker + audience.
+
 ## CITED (verify the source text)
 
 - **Chest-port preop rules** — cited to the chapter you provided ([1] in the existing style):
