@@ -63,6 +63,7 @@
     const eng = {
       stepIndex: 0,
       done: false,
+      endState: null,                // null | "takeover" | "kicked" | "bailed" (failed cases)
       emergency: null,               // active complication awaiting rescue
       vitals: { sbp: baselineSbp, dbp: 76, hr: 78, spo2: 98, rr: 14, act: null },
       decline: null,                 // {sbpDrop, spo2Drop, rrRise, reason} applied per turn
@@ -71,9 +72,42 @@
       usedDevices: [],
       ledger: [],                    // {category, delta(+/-), reason, cite}
       flags: {},
+      firedComps: {},                // complication name → true; a resolved complication never re-rolls (spec)
+      strikes: 0,                    // physically-impossible maneuvers (attending escalation)
+      hints: 0,                      // Ask For Help uses
       selectedItem: null,            // armed instrument from the Bag (battle UI)
       imaging: null,                 // current imaging modality (Imaging menu)
     };
+
+    // Preop consequences (ward.evalPreop): proceeding against preop rules logs
+    // the CITED penalties immediately and multiplies matching complication rolls.
+    const preopCtx = cfg.preop || {};
+    const preopRiskMods = (preopCtx.riskMods || []).map(r => ({ re: new RegExp(r.match, "i"), mult: r.mult }));
+    (preopCtx.penalties || []).forEach(p =>
+      eng.ledger.push({ category: p.cat || p.category || "safety", delta: p.delta, reason: p.reason, cite: p.cite || "" }));
+    function preopMultFor(name) {
+      let m = 1;
+      preopRiskMods.forEach(r => { if (r.re.test(name)) m *= r.mult; });
+      return m;
+    }
+
+    // Attending dialogue (game_config.attending_dialogue, DESIGN) with fallbacks.
+    const AD = (cfg.config && cfg.config.attending_dialogue) || {};
+    const AD_BLOCKED = AD.blocked || ["Excuse me lad, but aren't you missing a step?",
+      "What has to happen before that is even possible?", "You physically cannot do that yet.",
+      "Stop. Tell me what is missing.", "You clearly need to read a book. I am taking over this case."];
+    const STRIKE_CAP = AD.strike_cap || 5;
+    const HINT_CAP = AD.hint_cap || 5;
+
+    // taxonomy move → category (for step.blocked "cat:x" matchers)
+    const catOfMove = {};
+    (((cfg.config || {}).action_taxonomy || {}).categories || []).forEach(c =>
+      (c.moves || []).forEach(m => { catOfMove[m[0]] = c.id; }));
+    function isBlocked(step, actionId) {
+      if (step.outcomes && step.outcomes[actionId]) return false; // an authored outcome is by definition possible
+      return (step.blocked || []).some(b =>
+        b === actionId || (b.indexOf("cat:") === 0 && catOfMove[actionId] === b.slice(4)));
+    }
 
     function log(category, delta, reason, cite) {
       eng.ledger.push({ category, delta, reason, cite: cite || "" });
@@ -102,20 +136,26 @@
       eng.sbpSeries.push(eng.vitals.sbp);
     }
     function triggerComplication(comp, mult, declineSpec) {
+      if (eng.firedComps[comp.name]) return false; // never the same complication twice in one case (spec)
       const base = (comp.rate_high_pct != null ? comp.rate_high_pct : 2);
-      const eff = base * (mult || 1);
+      const preopMult = preopMultFor(comp.name);
+      const eff = base * (mult || 1) * preopMult;
       const rolled = rng() * 100;
       if (rolled < eff) {
+        eng.firedComps[comp.name] = true;
         eng.emergency = { comp, decline: declineSpec };
         eng.decline = Object.assign({ reason: comp.name }, declineSpec);
         log("event", 0, "COMPLICATION: " + comp.name + " (rolled " + rolled.toFixed(1) +
           "% vs " + eff.toFixed(1) + "% effective incidence; base " + base + "% " +
-          (comp.rate_text || "") + ")", comp.citation_text || "complications table");
+          (comp.rate_text || "") + (preopMult !== 1 ? "; ×" + preopMult + " preop risk" : "") + ")",
+          comp.citation_text || "complications table");
         return true;
       }
       return false;
     }
     function triggerModeledEvent(name, declineSpec, note) {
+      if (eng.firedComps[name]) return; // no repeats (spec)
+      eng.firedComps[name] = true;
       eng.emergency = { modeled: { name, note }, decline: declineSpec };
       eng.decline = Object.assign({ reason: name }, declineSpec);
       log("event", 0, "EVENT (MODELED): " + name + " — " + note, "MODELED simulation event");
@@ -241,6 +281,18 @@
       if (opts.imaging) eng.imaging = opts.imaging;
       if (opts.item) eng.selectedItem = opts.item;
       const s = steps[eng.stepIndex];
+      // Hard physical prerequisite (step.blocked): the attending interrupts and
+      // nothing happens. Five strikes → takeover, zero points (spec).
+      if (isBlocked(s, actionId)) {
+        eng.strikes++;
+        if (eng.strikes >= STRIKE_CAP) {
+          eng.done = true; eng.endState = "takeover";
+          log("event", 0, "The attending took over after " + eng.strikes + " physically impossible maneuvers.", "");
+          return { blocked: true, strike: eng.strikes, final: true, line: AD_BLOCKED[AD_BLOCKED.length - 1], done: true };
+        }
+        return { blocked: true, strike: eng.strikes,
+                 line: AD_BLOCKED[Math.min(eng.strikes - 1, AD_BLOCKED.length - 2)] };
+      }
       const outs = outcomesOf(s);
       const o = outs[actionId] || s.default || { score: [{ cat: "technical", delta: -4, reason: "Off-protocol maneuver for this step.", cite: "" }], narrative: "That doesn't accomplish this step." };
       if ((o.needs || []).some(id => !ownsDev(id))) return { error: "not stocked — visit procurement" };
@@ -253,6 +305,34 @@
     eng.choose = act;
     eng.selectItem = function (id) { eng.selectedItem = id; return ownsDev(id); };
     eng.setImaging = function (kind) { eng.imaging = kind; return kind; };
+
+    // Ask For Help: the attending hints at the current step (or the emergency
+    // rescue). More than HINT_CAP hints → sent out to read, zero points (spec).
+    eng.hint = function () {
+      eng.hints++;
+      if (eng.hints > HINT_CAP) {
+        eng.done = true; eng.endState = "kicked";
+        log("event", 0, "Sent out of the room after " + (eng.hints - 1) + " hints — go read.", "");
+        return { kicked: true, line: AD.kicked || "That's enough hints. Go read the chapter." };
+      }
+      if (eng.emergency) {
+        const em = describeEmergency();
+        return { n: eng.hints, cap: HINT_CAP, text: "Treat the emergency first — " + (em.rescues[0] ? em.rescues[0].label : "stabilize the patient") + ".", best: null };
+      }
+      const s = steps[eng.stepIndex];
+      const bestOut = s.best && s.outcomes && s.outcomes[s.best];
+      return { n: eng.hints, cap: HINT_CAP,
+               text: s.teaching || ("Objective: " + (s.prompt || s.title)),
+               best: bestOut ? bestOut.label : null };
+    };
+
+    // Leave Procedure: bail at any time — the case fails (spec).
+    eng.leave = function () {
+      if (eng.done) return { error: "already done" };
+      eng.done = true; eng.endState = "bailed";
+      log("event", 0, "Left the procedure unfinished — the patient was sent back to the ward.", "");
+      return { bailed: true };
+    };
 
     function describeEmergency() {
       const e = eng.emergency;
@@ -298,6 +378,30 @@
     // ---- scoring (spec §7) --------------------------------------------
     eng.finish = function () {
       const w = (cfg.config && cfg.config.scoring_weights) || { safety: 40, radiation: 20, renal: 20, technical: 20 };
+      // Failed cases (attending takeover / kicked out / walked out) score ZERO (spec).
+      if (eng.endState) {
+        const failNote = {
+          takeover: "The attending took over the case — five physically impossible maneuvers.",
+          kicked: "Sent out of the room — more than five hints. Go read.",
+          bailed: "You left the procedure. The case failed and the patient was rescheduled.",
+        }[eng.endState];
+        return {
+          total: 0, failed: eng.endState, failNote,
+          breakdown: { safety: 0, radiation: 0, renal: 0, technical: 0 }, max: w,
+          telemetry: {
+            fluoroMin: eng.accum.fluoroMin, fluoroTargetMin: params.fluoro_target_min || 3.0,
+            airKermaMgy: eng.accum.airKermaMgy,
+            dapGycm2: eng.accum.dapGycm2, referenceDapGycm2: params.reference_dap_gycm2 || null,
+            contrastMl: eng.accum.contrastMl,
+            contrastLimitMl: (patient && patient.renal && patient.renal.contrastLimitMl) || 9999,
+            finalSbp: eng.vitals.sbp,
+            lowestSbp: Math.min.apply(null, eng.sbpSeries.concat([eng.vitals.sbp])),
+          },
+          ledger: eng.ledger, usedDevices: eng.usedDevices.slice(),
+          postopNotes: (preopCtx.postop || []).slice(),
+          seed: patient ? patient.seed : null,
+        };
+      }
       const target = params.fluoro_target_min || 3.0;
       const dapRef = params.reference_dap_gycm2 || null;
       const limit = (patient && patient.renal && patient.renal.contrastLimitMl) || 9999;
@@ -338,6 +442,7 @@
         },
         ledger: eng.ledger,
         usedDevices: eng.usedDevices.slice(),
+        postopNotes: (preopCtx.postop || []).slice(),
         seed: patient ? patient.seed : null,
       };
     };
@@ -345,6 +450,7 @@
     eng.state = function () {
       return { stepIndex: eng.stepIndex, total: steps.length, vitals: Object.assign({}, eng.vitals),
                accum: Object.assign({}, eng.accum), emergency: eng.emergency ? describeEmergency() : null, done: eng.done,
+               endState: eng.endState, strikes: eng.strikes, hints: eng.hints,
                selectedItem: eng.selectedItem, imaging: eng.imaging };
     };
 

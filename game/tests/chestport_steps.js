@@ -5,6 +5,10 @@
 module.exports = [
   { n: 1, title: "Time-out & positioning", node: "rij_access", best: "timeout",
     prompt: "Pre-procedure. How do you begin?",
+    // Hard physical prereqs (attending blocks impossible maneuvers): nothing is
+    // intravascular yet — wire/catheter/implant maneuvers cannot exist. DESIGN.
+    blocked: ["cat:wire", "cat:catheter", "cat:embolization", "cat:angioplasty", "cat:recanalize",
+      "place-sheath", "upsize-sheath", "long-sheath", "upsize-035", "closure-device"],
     outcomes: {
       timeout: { label: "Time-out + US survey of the right IJ", note: "Correct — confirm patency/compressibility",
         score: [{ cat: "technical", delta: 0, reason: "Time-out and US survey performed." }],
@@ -17,6 +21,10 @@ module.exports = [
 
   { n: 2, title: "Venous access", node: "rij_access", best: "us",
     prompt: "Obtain venous access and secure a working wire to the SVC/IVC.",
+    // Bare wire/catheter work before the introducer needle is in the vein is
+    // physically impossible (the spec's canonical hard-block example).
+    blocked: ["cat:wire", "cat:catheter", "cat:embolization", "cat:angioplasty", "cat:recanalize",
+      "place-sheath", "upsize-sheath", "long-sheath", "closure-device"],
     outcomes: {
       us: { label: "US-guided micropuncture (21G), 0.018 → exchange → 0.035 Bentson", note: "Correct, lowest pneumothorax risk",
         needs: ["micropuncture-needle-21g", "mp-wire-018", "transitional-dilator-5f", "bentson-035-145"], imaging: "tap",
@@ -37,6 +45,7 @@ module.exports = [
 
   { n: 3, title: "Create the pocket", node: "rij_access", best: "pocket",
     prompt: "Create the subcutaneous pocket on the pectoralis fascia.",
+    blocked: ["cat:embolization", "cat:angioplasty", "cat:recanalize", "closure-device"],
     outcomes: {
       pocket: { label: "Anesthetize, incise, develop a snug pocket", note: "Coag-dependent",
         complication: { name: "Pocket hematoma", multFrom: "platelets", mult: 1.0, multLow: 3.0, multVeryLow: 8.0, decline: { sbpDrop: 6 } },
@@ -47,6 +56,7 @@ module.exports = [
 
   { n: 4, title: "Tunnel & measure", node: "right_bct", best: "measure",
     prompt: "Tunnel the catheter and set tip length to the cavoatrial junction.",
+    blocked: ["cat:embolization", "cat:angioplasty", "cat:recanalize"],
     outcomes: {
       measure: { label: "Measure against the wire under fluoro, trim to CAJ", note: "Correct",
         needs: ["port-catheter-8f"], imaging: "tap",
@@ -61,6 +71,7 @@ module.exports = [
 
   { n: 5, title: "Sheath & catheter delivery", node: "svc", best: "valsalva_gentle",
     prompt: "Deliver the catheter through the peel-away sheath to the CAJ.",
+    blocked: ["cat:embolization", "cat:angioplasty"],
     outcomes: {
       valsalva_gentle: { label: "Valsalva/breath-hold, pinch sheath, gentle advance", note: "Correct technique",
         needs: ["peelaway-sheath-9f"], ok: "Sheath placed with air-embolism precautions; catheter advanced gently (resistance LOW). Tip at the CAJ." },
@@ -80,6 +91,7 @@ module.exports = [
 
   { n: 6, title: "Connect & test", node: "caj", best: "aspirate",
     prompt: "Connect the port and test it.",
+    blocked: ["cat:embolization", "cat:angioplasty"],
     outcomes: {
       aspirate: { label: "Lock to stem; Huber access; aspirate + flush each lumen", note: "Correct",
         needs: ["huber-needle-20g"], score: [{ cat: "technical", delta: 0, reason: "Brisk blood return and free flush confirmed." }],

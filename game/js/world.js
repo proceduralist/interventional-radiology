@@ -495,6 +495,32 @@
       g.fillStyle(0x4a5262, 1); g.fillRect(0, 44, 36, 8);
       g.fillStyle(0x2b303c, 1); g.fillRect(0, 50, 36, 2);
     });
+    // patient lying in a ward bed (tinted per-NPC for variety); overlays t_bed
+    tex("t_pt", 32, 34, (g) => {
+      g.fillStyle(0xe8c9a8, 1); g.fillCircle(16, 7, 6);          // head on the pillow
+      g.fillStyle(0x2b303c, 1); g.fillRect(10, 1, 12, 3);        // hair
+      g.fillStyle(0xffffff, 1); g.fillRect(4, 12, 24, 4);        // sheet fold at the chest
+      g.fillStyle(0x86b7d6, 1); g.fillRect(4, 16, 24, 16);       // blanket over the body
+      g.fillStyle(0x6d9cba, 1); g.fillRect(4, 16, 24, 2);
+      g.fillStyle(0x5d87a3, 1); g.fillRect(14, 18, 4, 14);       // leg ridge shading
+    });
+    tex("t_ctgantry", 64, 62, (g) => {
+      g.fillStyle(0x000000, 0.22); g.fillEllipse(32, 57, 50, 7);
+      g.fillStyle(0xd8dce2, 1); g.fillRect(6, 6, 52, 46);        // gantry housing
+      g.fillStyle(0xbfc5cd, 1); g.fillRect(6, 6, 52, 6);
+      g.fillStyle(0x14181e, 1); g.fillCircle(32, 30, 15);        // bore
+      g.fillStyle(0x2b3644, 1); g.fillCircle(32, 30, 12);
+      g.fillStyle(0x69d2e7, 1); g.fillRect(26, 8, 12, 3);        // status light bar
+    });
+    tex("t_uscart", 34, 44, (g) => {
+      g.fillStyle(0x000000, 0.22); g.fillEllipse(17, 41, 26, 5);
+      g.fillStyle(0x4a5262, 1); g.fillRect(14, 22, 6, 16);       // pole
+      g.fillStyle(0xdfe3e8, 1); g.fillRect(4, 34, 26, 6);        // base
+      g.fillStyle(0x2b303c, 1); g.fillRect(4, 2, 26, 20);        // monitor
+      g.fillStyle(0x1b2a38, 1); g.fillRect(6, 4, 22, 16);
+      g.fillStyle(0x9fd8e8, 1); g.beginPath(); g.moveTo(17, 18); g.lineTo(10, 6); g.lineTo(24, 6); g.closePath(); g.fillPath(); // sector image
+      g.fillStyle(0x8b97a7, 1); g.fillRect(26, 24, 3, 12);       // probe cable
+    });
     tex("t_carm", 56, 62, (g) => {
       g.fillStyle(0x000000, 0.22); g.fillEllipse(28, 57, 40, 7);
       g.fillStyle(0x39404d, 1); g.fillRect(18, 42, 22, 14);

@@ -19,6 +19,17 @@
     return rest("v_game_ready?select=*&order=complexity.asc,id.asc");
   }
 
+  // Ward spawning needs each ready procedure's preop rules + location without
+  // pulling full bundles. Tiny query; cached in-page per session.
+  let _preopMap = null;
+  async function loadPreopMap() {
+    if (_preopMap) return _preopMap;
+    const rows = await rest("procedure_game_params?select=procedure_id,preop,location,min_level");
+    _preopMap = {};
+    rows.forEach(r => { _preopMap[r.procedure_id] = r.preop || {}; });
+    return _preopMap;
+  }
+
   async function fetchBundle(procedureId) {
     const [proc, params, gens, comps, cfg] = await Promise.all([
       rest("procedures?select=*&id=eq." + procedureId),
@@ -74,5 +85,5 @@
     }
   }
 
-  root.IRGameData = { loadCase, listReady, version };
+  root.IRGameData = { loadCase, listReady, loadPreopMap, version };
 })(window);

@@ -242,6 +242,10 @@ create table public.procedure_game_params (
   complexity        int not null default 1 check (complexity between 1 and 5),
   required_devices  jsonb not null default '[]',  -- device_class checklist for case start
   case_steps        jsonb not null default '[]',  -- maps site steps to engine actions
+  min_level         int not null default 1,       -- DESIGN: player level gate for ward spawns
+  location          text not null default 'ir_suite'
+                    check (location in ('ir_suite','ct_suite','us_room','bedside')), -- standard-of-care room
+  preop             jsonb not null default '{}',  -- preop lab rules + absolute contraindications
   updated_at        timestamptz not null default now()
 );
 
@@ -299,7 +303,7 @@ create table public.case_logs (
 -- ---------------------------------------------------------------------------
 create or replace view public.v_game_ready
 with (security_invoker = true) as
-select p.id, p.title, p.category_id, g.pacing, g.complexity
+select p.id, p.title, p.category_id, g.pacing, g.complexity, g.min_level, g.location
 from public.procedures p
 join public.procedure_game_params g on g.procedure_id = p.id
 join public.vessel_maps vm          on vm.id = g.vessel_map_id

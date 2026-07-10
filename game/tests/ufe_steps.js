@@ -6,6 +6,8 @@
 module.exports = [
   { n: 1, title: "Time-out & planning", node: "cfa_access", best: "timeout",
     prompt: "Symptomatic fibroids, MRI reviewed. Begin the case.",
+    blocked: ["cat:wire", "cat:catheter", "cat:embolization", "cat:angioplasty", "cat:recanalize",
+      "place-sheath", "upsize-sheath", "long-sheath", "closure-device"],
     teaching: "Confirm symptomatic fibroids, patent uterine ostia, and no dominant ovarian supply before starting.",
     outcomes: {
       timeout: { label: "Pre-procedure time-out; confirm MRI, symptoms, consent", note: "Correct",
@@ -15,6 +17,7 @@ module.exports = [
 
   { n: 2, title: "Femoral access", node: "cfa_access", best: "us-micropuncture",
     prompt: "Obtain arterial access and place a working sheath.",
+    blocked: ["cat:wire", "cat:catheter", "cat:embolization", "cat:angioplasty", "cat:recanalize", "closure-device"],
     teaching: "Ultrasound-guided common femoral access lowers access-site complications.",
     outcomes: {
       "us-micropuncture": { label: "Ultrasound-guided common femoral access, 5F sheath", note: "Standard of care",
@@ -29,6 +32,7 @@ module.exports = [
 
   { n: 3, title: "Pelvic arteriogram", node: "aortic_bifurc", best: "dsa",
     prompt: "Map the uterine arteries before selecting.",
+    blocked: ["cat:embolization", "cat:angioplasty", "cat:recanalize"],
     teaching: "A diagnostic pelvic run identifies the uterine origins and any ovarian collateral supply.",
     outcomes: {
       dsa: { label: "Pelvic DSA through a flush catheter", note: "Correct roadmap",
@@ -42,6 +46,7 @@ module.exports = [
 
   { n: 4, title: "Select the uterine artery", node: "contra_iia", best: "reform",
     prompt: "Catheterize the (contralateral) uterine artery.",
+    blocked: ["cat:embolization", "cat:angioplasty"],
     teaching: "A reverse-curve catheter reforms to select the sharply reflexed uterine origin up-and-over the bifurcation.",
     outcomes: {
       reform: { label: "Reform a reverse-curve catheter into the uterine artery", note: "Correct",

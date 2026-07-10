@@ -104,6 +104,168 @@
     },
   };
 
+  // --- Bedside preop consult (ward NPCs) ------------------------------------
+  // Spec: Come Back Later / Perform Procedure / Recommend against / Order Lab Work.
+  // p = generated+overridden patient; ev = IRWard.evalPreop result; rec = bed record.
+  const Preop = {
+    show(p, procedure, ev, rec, opts) {
+      const card = el("div", "card emr preop");
+      const catalog = ((opts.config || {}).lab_catalog || {}).labs || [];
+      const labLine = (name, slot, unit) => {
+        if (!slot || slot.missing || slot.value == null)
+          return "<div class='lab'>" + name + " <b class='miss'>— not on file</b></div>";
+        return "<div class='lab'>" + name + " <b>" + slot.value + "</b> " + (unit || "") + flag(slot.flag) + "</div>";
+      };
+
+      const main = () => {
+        card.innerHTML = "";
+        card.appendChild(el("h2", null, "Inpatient Ward — Bed " + (opts.bedNo || "") + " · Bedside Consult"));
+        card.appendChild(el("div", "emr-hdr",
+          "<strong>" + p.demographics.age + " y/o " + p.demographics.sex + "</strong> · " + p.demographics.weightKg +
+          " kg · <em>" + p.indication + "</em><br>Consult request: <b>" + procedure.title + "</b>"));
+        const grid = el("div", "emr-grid");
+        grid.appendChild(el("div", "emr-box", "<h4>PMH</h4><ul><li>" + p.pmh.join("</li><li>") + "</li></ul>"));
+        grid.appendChild(el("div", "emr-box", "<h4>Medications</h4><ul><li>" + p.meds.join("</li><li>") + "</li></ul>"));
+        const L = p.labs;
+        grid.appendChild(el("div", "emr-box", "<h4>Labs</h4>" +
+          labLine("Creatinine", L.creatinine, "mg/dL") + labLine("eGFR", L.egfr, "") +
+          labLine("Platelets", L.platelets, "×10⁹/L") + labLine("INR", L.inr, "") +
+          (L.ptt ? labLine("PTT", L.ptt, "s") : "") + labLine("Hgb", L.hemoglobin, "g/dL")));
+        grid.appendChild(el("div", "emr-box", "<h4>Imaging</h4><p>" + p.imagingNote + "</p>" +
+          "<h4>Contrast budget</h4><p>eGFR " + p.renal.egfr + " → <b>" + p.renal.riskTier.replace(/_/g, " ") + "</b>. Cigarroa V<sub>max</sub> <b>" + p.renal.contrastLimitMl + " mL</b>.</p>"));
+        card.appendChild(grid);
+
+        if (p.contraNote) card.appendChild(el("div", "guardrails block", "<strong>🚩 " + (ev.contra ? ev.contra.label : "Red flag") + ".</strong> " + p.contraNote +
+          (ev.contra && ev.contra.cite ? " <span class='cite'>" + ev.contra.cite + "</span>" : "")));
+
+        if ((opts.resolvedNotes || []).length)
+          card.appendChild(el("div", "guardrails okr", "<strong>🧪 Lab results back:</strong><ul><li>" +
+            opts.resolvedNotes.map(r => r.name + " — " + r.note).join("</li><li>") + "</li></ul>"));
+
+        if ((rec.pending || []).length) {
+          const names = rec.pending.map(id => { const c = catalog.find(x => x.id === id); return c ? c.name : id; });
+          card.appendChild(el("div", "guardrails warn", "<strong>⏳ Labs pending:</strong> " + names.join(", ") + " — results will be on the chart at your next visit."));
+        }
+
+        const gr = el("div", "guardrails");
+        const labViol = ev.violations.filter(v => !ev.contra || v.label !== ev.contra.label);
+        if (ev.contra) {
+          gr.classList.add("block");
+          gr.innerHTML = "<strong>⛔ Unfixable contraindication.</strong> The right call is to recommend against this procedure.";
+        } else if (labViol.length) {
+          gr.classList.add("warn");
+          gr.innerHTML = "<strong>⚠ Not yet optimized:</strong><ul><li>" +
+            labViol.map(v => v.text + " <span class='cite'>" + v.cite + "</span>").join("</li><li>") + "</li></ul>";
+        } else {
+          gr.classList.add("okr");
+          gr.innerHTML = "<strong>✓ Medically optimized.</strong> Preop parameters meet the procedure's thresholds.";
+        }
+        card.appendChild(gr);
+        card.appendChild(el("div", "prov", "Generator: <em>" + p.generatorName + "</em> · seed " + p.seed + " · " + p.dataClass));
+
+        const row = el("div", "btnrow");
+        const bGo = el("button", "btn primary", "Perform procedure →");
+        const bLabs = el("button", "btn", "🧪 Order lab work");
+        const bNo = el("button", "btn", "Recommend against procedure");
+        const bLater = el("button", "btn ghost", "Come back later");
+        bGo.onclick = () => (labViol.length || ev.contra) ? confirmProceed() : opts.onPerform();
+        bLabs.onclick = () => labMenu();
+        bNo.onclick = () => confirmTurnDown();
+        bLater.onclick = () => opts.onLater();
+        row.append(bGo, bLabs, bNo, bLater);
+        card.appendChild(row);
+        show(card);
+      };
+
+      const labMenu = () => {
+        card.innerHTML = "";
+        card.appendChild(el("h2", null, "🧪 Order Lab Work"));
+        card.appendChild(el("p", "sub", "Ordered labs result on your NEXT visit to the bedside. Out-of-range values are corrected by the primary team (held anticoagulation, transfusion, etc.)."));
+        const col = el("div", "elevfloors");
+        catalog.forEach(c => {
+          const pending = rec.pending.indexOf(c.id) >= 0;
+          const slot = p.labs[c.id];
+          const cur = !slot || slot.missing || slot.value == null ? "not on file" : "current " + slot.value + (c.unit ? " " + c.unit : "");
+          const b = el("button", "btn" + (pending ? " ghost" : ""),
+            "<b>" + c.name + "</b><br><small>" + (pending ? "⏳ pending — results next visit" : cur +
+              (c.normal ? " · ref " + c.normal[0] + "–" + c.normal[1] : "")) + "</small>");
+          b.disabled = pending;
+          b.onclick = () => { opts.onOrderLab(c.id); labMenu(); };
+          col.appendChild(b);
+        });
+        const back = el("button", "btn ghost", "‹ Back to the bedside");
+        back.onclick = () => main();
+        card.append(col, back);
+        show(card);
+      };
+
+      const confirmProceed = () => {
+        card.innerHTML = "";
+        card.appendChild(el("h2", null, "⚠ Proceed against preop standards?"));
+        const box = el("div", "guardrails warn");
+        box.innerHTML = "<strong>If you scrub in now:</strong><ul><li>" +
+          ev.violations.map(v => v.text + " <span class='cite'>" + v.cite + "</span>").join("</li><li>") +
+          "</li></ul><p>You will lose points for deviating from the standard of care" +
+          (ev.riskMods.length ? ", and the related complication risk is increased for this case" : "") +
+          (ev.postop.length ? ". The patient is at risk of a post-op adverse outcome" : "") + ".</p>";
+        card.appendChild(box);
+        const row = el("div", "btnrow");
+        const go = el("button", "btn danger", "Proceed anyway");
+        const back = el("button", "btn ghost", "‹ Reconsider");
+        go.onclick = () => opts.onPerform();
+        back.onclick = () => main();
+        row.append(go, back);
+        card.appendChild(row);
+        show(card);
+      };
+
+      const confirmTurnDown = () => {
+        card.innerHTML = "";
+        card.appendChild(el("h2", null, "Recommend against the procedure?"));
+        card.appendChild(el("p", "sub", "Declining is correct only when the clinical picture cannot be fixed (an absolute contraindication). Turning away an operable — or optimizable — case costs clout."));
+        const row = el("div", "btnrow");
+        const go = el("button", "btn danger", "Recommend against — discharge from the IR list");
+        const back = el("button", "btn ghost", "‹ Back");
+        go.onclick = () => opts.onTurnDown();
+        back.onclick = () => main();
+        row.append(go, back);
+        card.appendChild(row);
+        show(card);
+      };
+
+      main();
+    },
+  };
+
+  // --- Procedure location choice (spec: IR Suite / CT Suite / US Room / Bedside)
+  const LocationPick = {
+    show(procedure, rooms, opts) {
+      const card = el("div", "card casepick");
+      card.appendChild(el("h2", null, "Where do you perform it?"));
+      card.appendChild(el("p", "sub", "Pick the standard-of-care location for <b>" + procedure.title + "</b>. The wrong room costs points — and the patient still has to be worked on there."));
+      const col = el("div", "elevfloors");
+      const OPTS = [
+        ["ir_suite", "IR Suite", "Fluoroscopy + full sterile setup, 3rd floor"],
+        ["ct_suite", "CT Suite", "CT guidance, 3rd floor"],
+        ["us_room", "Ultrasound Room", "Dedicated US room, 3rd floor"],
+        ["bedside", "Bedside", "Do it here in the ward bed"],
+      ];
+      OPTS.forEach(([id, name, desc]) => {
+        const occupied = id !== "bedside" && rooms && rooms[id];
+        const b = el("button", "btn", "<b>" + name + "</b><br><small>" + desc + (occupied ? " · 🛏 a patient is already waiting there" : "") + "</small>");
+        b.onclick = () => {
+          if (occupied) { toast("You have a patient waiting for you in the " + name + "!"); return; }
+          opts.onPick(id);
+        };
+        col.appendChild(b);
+      });
+      const back = el("button", "btn ghost", "‹ Back to the bedside");
+      back.onclick = () => opts.onBack();
+      card.append(col, back);
+      show(card);
+    },
+  };
+
   // --- Angio console ------------------------------------------------------
   // --- tool sprite glyphs (vector fallback until assets/tools.json ships) ----
   const TOOLCOLOR = { needle: "#B4B2A9", micro_guidewire: "#85B7EB", guidewire: "#85B7EB", catheter: "#5DCAA5",
@@ -145,17 +307,53 @@
     if (!owned.length) grid.appendChild(el("div", "bsub", "(cart empty — restock at procurement)"));
     return grid;
   }
-  function battleSceneHTML() {
-    return '<svg class="bsvg" viewBox="0 0 260 150" preserveAspectRatio="xMidYMid meet" aria-hidden="true">' +
+  // Battle backdrop per procedure location (spec: room-specific backgrounds).
+  // Shared: table + draped patient. Surroundings vary by location.
+  function battleSceneHTML(location) {
+    const table =
       '<ellipse cx="150" cy="132" rx="96" ry="10" fill="#0c0f13"/>' +
       '<rect x="60" y="86" width="180" height="16" rx="4" fill="#5a6472"/><rect x="60" y="86" width="180" height="5" rx="2" fill="#727d8d"/>' +
       '<rect x="74" y="102" width="9" height="26" fill="#3d4550"/><rect x="217" y="102" width="9" height="26" fill="#3d4550"/>' +
       '<rect x="78" y="78" width="150" height="10" rx="5" fill="#c7cfdb"/><rect x="90" y="70" width="128" height="12" rx="6" fill="#9fb4d6"/>' +
-      '<circle cx="92" cy="76" r="9" fill="#e8c9a8"/>' +
-      '<path d="M40 40 A44 44 0 0 1 40 128" fill="none" stroke="#8b97a7" stroke-width="12"/>' +
-      '<rect x="28" y="30" width="34" height="16" rx="3" fill="#6b7686"/><rect x="28" y="122" width="34" height="16" rx="3" fill="#6b7686"/>' +
-      '<line x1="45" y1="46" x2="45" y2="70" stroke="#4b5462" stroke-width="3"/>' +
-      '<rect x="170" y="16" width="40" height="26" rx="3" fill="#0a1418" stroke="#2b3038"/><path d="M176 40 l-14 22" stroke="#2b3038" stroke-width="3"/>' +
+      '<circle cx="92" cy="76" r="9" fill="#e8c9a8"/>';
+    let env = "";
+    if (location === "ct_suite") {
+      env = '<circle cx="205" cy="86" r="52" fill="#d8dce2"/><circle cx="205" cy="86" r="38" fill="#14171d"/>' +
+            '<circle cx="205" cy="86" r="33" fill="#232b36"/><rect x="188" y="30" width="34" height="6" rx="2" fill="#69d2e7"/>' +
+            '<rect x="16" y="20" width="44" height="28" rx="3" fill="#0a1418" stroke="#2b3038"/><path d="M22 48 l-6 20" stroke="#2b3038" stroke-width="3"/>';
+    } else if (location === "us_room") {
+      env = '<rect x="22" y="34" width="40" height="30" rx="3" fill="#0a1418" stroke="#2b3038"/>' +
+            '<path d="M42 62 l0 40" stroke="#4b5462" stroke-width="4"/><rect x="28" y="98" width="30" height="8" rx="2" fill="#3d4550"/>' +
+            '<path d="M42 40 L32 58 L52 58 Z" fill="#9fd8e8"/>' +
+            '<path d="M62 50 q14 8 20 26" stroke="#8b97a7" stroke-width="2.5" fill="none"/><rect x="80" y="72" width="7" height="12" rx="2" fill="#c7cfdb"/>' +
+            '<rect x="200" y="16" width="44" height="10" rx="2" fill="#39404d"/>';
+    } else if (location === "bedside") {
+      env = '<rect x="20" y="12" width="220" height="10" rx="2" fill="#39404d"/>' +          // headwall rail
+            '<rect x="30" y="26" width="34" height="26" rx="2" fill="#1b2a38" stroke="#2b3038"/>' + // window (night shift)
+            '<circle cx="40" cy="34" r="2.5" fill="#e8e2b0"/><circle cx="52" cy="42" r="1.5" fill="#e8e2b0"/>' +
+            '<path d="M226 34 l0 66" stroke="#8b97a7" stroke-width="3"/><path d="M218 36 h16" stroke="#8b97a7" stroke-width="3"/>' + // IV pole
+            '<path d="M221 40 q-2 10 2 16" stroke="#9fc4e0" stroke-width="2" fill="none"/><rect x="216" y="38" width="8" height="14" rx="2" fill="#cfe4f2"/>' +
+            '<rect x="180" y="20" width="36" height="24" rx="3" fill="#0a1418" stroke="#2b3038"/>' +
+            '<polyline points="184,32 190,32 193,26 196,38 199,32 212,32" fill="none" stroke="#5dcaa5" stroke-width="1.6"/>' +
+            '<rect x="60" y="86" width="14" height="30" fill="#4a8a8c"/><rect x="226" y="86" width="14" height="30" fill="#4a8a8c"/>'; // bed rails
+    } else { // ir_suite (default)
+      env = '<path d="M40 40 A44 44 0 0 1 40 128" fill="none" stroke="#8b97a7" stroke-width="12"/>' +
+            '<rect x="28" y="30" width="34" height="16" rx="3" fill="#6b7686"/><rect x="28" y="122" width="34" height="16" rx="3" fill="#6b7686"/>' +
+            '<line x1="45" y1="46" x2="45" y2="70" stroke="#4b5462" stroke-width="3"/>' +
+            '<rect x="170" y="16" width="40" height="26" rx="3" fill="#0a1418" stroke="#2b3038"/><path d="M176 40 l-14 22" stroke="#2b3038" stroke-width="3"/>';
+    }
+    return '<svg class="bsvg" viewBox="0 0 260 150" preserveAspectRatio="xMidYMid meet" aria-hidden="true">' + table + env + '</svg>';
+  }
+  // Attending sprite (pokes in from the door; spec: escalating interruptions).
+  function attendingSVG(cross) {
+    return '<svg viewBox="0 0 40 56" width="40" height="56" aria-hidden="true">' +
+      '<rect x="0" y="0" width="10" height="56" fill="#20262e"/>' +               // door edge
+      '<circle cx="24" cy="14" r="9" fill="#e8c9a8"/>' +
+      '<path d="M15 10 q9 -8 18 0 l0 -3 q-9 -7 -18 0 Z" fill="#aab2bc"/>' +       // gray hair
+      '<rect x="14" y="24" width="20" height="22" rx="4" fill="#e8eaee"/>' +      // white coat
+      '<rect x="22" y="24" width="4" height="14" fill="#4a5262"/>' +
+      (cross ? '<path d="M18 10 l4 3 M22 10 l-4 3 M27 10 l4 3 M31 10 l-4 3" stroke="#7a3030" stroke-width="1.6" fill="none"/>'
+             : '<circle cx="21" cy="13" r="1.4" fill="#2b303c"/><circle cx="28" cy="13" r="1.4" fill="#2b303c"/>') +
       '</svg>';
   }
 
@@ -168,17 +366,31 @@
       const taxonomy = (ctx.taxonomy && ctx.taxonomy.length) ? ctx.taxonomy
         : (ctx.config && ctx.config.action_taxonomy && ctx.config.action_taxonomy.categories) || [];
 
+      const location = ctx.location || "ir_suite";
+      const LOC_NAME = { ir_suite: "IR Suite", ct_suite: "CT Suite", us_room: "Ultrasound Room", bedside: "Bedside" };
       const card = el("div", "card battle angioscreen");
-      const scene = el("div", "bscene"); scene.innerHTML = battleSceneHTML();
-      const statusBox = el("div", "bstatus");
-      const caseBox = el("div", "bcase");
-      scene.append(statusBox, caseBox);
+      const scene = el("div", "bscene"); scene.innerHTML = battleSceneHTML(location);
+      const statusBox = el("div", "bstatus");   // top-right: vitals + stability (spec)
+      const caseBox = el("div", "bcase");       // bottom-left: fluoro / DAP / contrast hub (spec)
+      const equipBox = el("div", "bequip");     // top-left: equipped item (spec)
+      scene.append(statusBox, caseBox, equipBox);
       const lower = el("div", "blower");
-      const narr = el("div", "bnarr");
-      const menu = el("div", "bmenu");
+      const narr = el("div", "bnarr");          // console of actions (spec)
+      const menu = el("div", "bmenu");          // bottom-right commands (spec)
       lower.append(narr, menu);
-      card.append(el("h2", "bh", "Angio Suite — " + ctx.procedure.title), scene, lower);
+      card.append(el("h2", "bh", LOC_NAME[location] + " — " + ctx.procedure.title), scene, lower);
       show(card);
+
+      // --- attending pop-in (hints + blocked-step escalation) ---
+      let attnTimer = null;
+      function showAttending(text, opts2) {
+        const old = scene.querySelector(".attn"); if (old) old.remove();
+        if (attnTimer) clearTimeout(attnTimer);
+        const a = el("div", "attn" + ((opts2 && opts2.mad) ? " mad" : ""));
+        a.innerHTML = attendingSVG(opts2 && opts2.mad) + "<div class='attn-bubble'>" + text + "</div>";
+        scene.appendChild(a);
+        if (!(opts2 && opts2.stay)) attnTimer = setTimeout(() => a.remove(), 4200);
+      }
 
       const stabilityPct = (sbp) => Math.max(0, Math.min(100, Math.round((sbp - 40) / 0.9)));
       function renderStatus() {
@@ -192,25 +404,50 @@
         const st = engine.currentStep(), dapRef = ctx.params.reference_dap_gycm2;
         caseBox.innerHTML =
           "<div class='bcase-h'>" + (st ? "Step " + st.n + " · " + st.title : "Wrapping up") + "</div>" +
+          (st && st.prompt ? "<div class='bobj'>" + st.prompt + "</div>" : "") +
           "<div class='bmeters'>fluoro <b>" + s.accum.fluoroMin.toFixed(1) + "</b> min · DAP <b>" + (s.accum.dapGycm2 || 0).toFixed(2) + "</b>" + (dapRef ? "/" + dapRef.toFixed(2) : "") + " · contrast <b>" + s.accum.contrastMl.toFixed(0) + "</b>/" + ctx.patient.renal.contrastLimitMl + " mL</div>";
+        const dn = selectedItem ? (devById[selectedItem] ? devById[selectedItem].name : selectedItem) : "—";
+        equipBox.innerHTML = "<div>🔧 <b>" + dn + "</b></div><div>📡 " + (imaging || "—") + "</div>" +
+          (s.hints ? "<div class='bhint-ct'>💬 hints " + s.hints + "/5</div>" : "");
       }
       function say(html, kind) { const l = el("div", "bline" + (kind ? " " + kind : ""), html); narr.appendChild(l); narr.scrollTop = narr.scrollHeight; }
       const scroller = () => el("div", "bscroll");
       const backBtn = (fn) => { const b = el("button", "btn ghost", "‹ Back"); b.onclick = fn; return b; };
 
-      function armRow() {
-        const r = el("div", "barm");
-        const dn = selectedItem ? (devById[selectedItem] ? devById[selectedItem].name : selectedItem) : "—";
-        r.innerHTML = "<span>Armed tool: <b>" + dn + "</b></span><span>Imaging: <b>" + (imaging || "—") + "</b></span>";
-        return r;
-      }
       function rootMenu() {
-        menu.innerHTML = ""; menu.appendChild(armRow());
+        menu.innerHTML = "";
         const g = el("div", "bcmd");
-        [["Actions", actionsMenu, true], ["Bag", bagMenu], ["Imaging", imagingMenu], ["Notes", notesMenu]].forEach(o => {
-          const b = el("button", "btn" + (o[2] ? " primary" : ""), o[0]); b.onclick = o[1]; g.appendChild(b);
+        [["Actions", actionsMenu, "primary"], ["Bag", bagMenu], ["Imaging", imagingMenu],
+         ["Ask For Help", askHelp, "help"], ["Leave Procedure", leaveMenu, "danger ghostd"]].forEach(o => {
+          const b = el("button", "btn " + (o[2] || ""), o[0]); b.onclick = o[1]; g.appendChild(b);
         });
         menu.appendChild(g);
+      }
+      // Ask For Help: attending pops in with a hint. >5 → kicked out, no points (spec).
+      function askHelp() {
+        const h = engine.hint();
+        renderStatus();
+        if (h.kicked) {
+          showAttending(h.line, { mad: true, stay: true });
+          say("👨‍⚕️ " + h.line, "emerg");
+          say("You are asked to leave the room. Case over.", "bad");
+          finish();
+          return;
+        }
+        const txt = "Hint " + h.n + "/" + h.cap + ": " + h.text + (h.best ? "<br><em>Try: " + h.best + "</em>" : "");
+        showAttending(txt, { stay: false });
+        say("👨‍⚕️ <em>" + txt + "</em>", "help");
+        rootMenu();
+      }
+      // Leave Procedure: bail at any time — fail + clout loss (spec).
+      function leaveMenu() {
+        menu.innerHTML = "";
+        menu.appendChild(el("p", "bsub", "Leave now and the case fails: no payout, lost clout, and the patient goes back to the ward list."));
+        const sc = scroller();
+        const yes = el("button", "btn amove danger", "Leave the procedure — accept the failure");
+        yes.onclick = () => { engine.leave(); say("You break scrub and walk out.", "bad"); finish(); };
+        sc.appendChild(yes);
+        menu.appendChild(sc); menu.appendChild(backBtn(rootMenu));
       }
       function actionsMenu() {
         menu.innerHTML = ""; menu.appendChild(el("p", "bsub", "Pick the maneuver. Arm a tool (Bag) + imaging first if the step needs them."));
@@ -237,6 +474,14 @@
       function doAction(actionId) {
         const r = engine.act(actionId, { item: selectedItem, imaging });
         if (r.error) { say("⛔ " + r.error, "bad"); return; }
+        // Physically impossible right now → the attending interrupts (no advance).
+        if (r.blocked) {
+          showAttending(r.line, { mad: r.strike >= 3, stay: !!r.final });
+          say("👨‍⚕️ " + r.line + " <small>(strike " + r.strike + "/5)</small>", r.final ? "emerg" : "help");
+          renderStatus();
+          if (r.final) { say("The attending scrubs in and takes over. Case over.", "bad"); finish(); return; }
+          rootMenu(); return;
+        }
         if (r.narrative) say(r.narrative);
         renderStatus();
         if (r.emergency) return renderEmergency(r.emergency);
@@ -257,7 +502,7 @@
       }
       function bagMenu() {
         menu.innerHTML = ""; menu.appendChild(el("p", "bsub", "Supply cart — click a tool to arm it, then use it via Actions."));
-        menu.appendChild(cartGrid(inv, devById, (id, d) => { selectedItem = id; say("Armed <b>" + d.name + "</b>."); bagMenu(); }, selectedItem));
+        menu.appendChild(cartGrid(inv, devById, (id, d) => { selectedItem = id; engine.selectItem(id); say("Armed <b>" + d.name + "</b>."); renderStatus(); bagMenu(); }, selectedItem));
         menu.appendChild(backBtn(rootMenu));
       }
       function imagingMenu() {
@@ -265,21 +510,19 @@
         const sc = scroller();
         [["Ultrasound", "ultrasound"], ["Fluoroscopy", "fluoro"], ["DSA run", "dsa"], ["Roadmap", "roadmap"]].forEach(o => {
           const b = el("button", "btn amove" + (imaging === o[1] ? " on" : ""), o[0]);
-          b.onclick = () => { imaging = o[1]; engine.setImaging(o[1]); say("Imaging armed: " + o[0] + "."); rootMenu(); };
+          b.onclick = () => { imaging = o[1]; engine.setImaging(o[1]); say("Imaging armed: " + o[0] + "."); renderStatus(); rootMenu(); };
           sc.appendChild(b);
         });
         menu.appendChild(sc); menu.appendChild(backBtn(rootMenu));
       }
-      function notesMenu() {
-        menu.innerHTML = ""; const st = engine.currentStep();
-        menu.appendChild(el("p", "bsub", st ? ("Objective — " + st.prompt) : "Case objective."));
-        if (st && st.teaching) menu.appendChild(el("div", "bteach", st.teaching));
-        menu.appendChild(backBtn(rootMenu));
-      }
       function finish() { opts.onFinish(engine.finish()); }
 
       renderStatus();
-      say("Case start. Patient prepped, sterile field up.", "good");
+      say("Case start — " + LOC_NAME[location] + ". " + (location === "bedside" ? "You gown up at the bedside." : "The patient is on the table."), "good");
+      if (ctx.preopViolations && ctx.preopViolations.length)
+        say("⚠ Proceeding despite: " + ctx.preopViolations.map(v => v.label).join(", ") + " — related complication risk is UP.", "bad");
+      if (ctx.wrongLocation)
+        say("⚠ " + ctx.wrongLocation, "bad");
       rootMenu();
     },
   };
@@ -308,8 +551,11 @@
   const Debrief = {
     show(score, ctx, opts) {
       const card = el("div", "card debrief");
-      const grade = score.total >= 90 ? "A" : score.total >= 80 ? "B" : score.total >= 70 ? "C" : score.total >= 60 ? "D" : "F";
-      card.appendChild(el("h2", null, "Post-op Debrief"));
+      const grade = score.failed ? "F" : score.total >= 90 ? "A" : score.total >= 80 ? "B" : score.total >= 70 ? "C" : score.total >= 60 ? "D" : "F";
+      card.appendChild(el("h2", null, score.failed ? "Case Failed" : "Post-op Debrief"));
+      if (score.failed) card.appendChild(el("div", "guardrails block", "<strong>" +
+        (score.failed === "takeover" ? "👨‍⚕️ Attending takeover." : score.failed === "kicked" ? "📚 Sent out to read." : "🚪 You left the case.") +
+        "</strong> " + (score.failNote || "") + (opts.cloutDelta ? " <b>Clout " + opts.cloutDelta + ".</b>" : "")));
       const ring = el("div", "score");
       ring.innerHTML = "<div class='big'>" + score.total + "</div><div class='grade grade-" + grade + "'>" + grade + "</div><div class='out'>/ 100</div>";
       card.appendChild(ring);
@@ -341,17 +587,30 @@
       });
       card.appendChild(led);
 
+      if ((score.postopNotes || []).length) {
+        const po = el("div", "ledger");
+        po.appendChild(el("h4", null, "Post-op course"));
+        score.postopNotes.forEach(n => po.appendChild(el("div", "ll emerg", "🏥 " + n)));
+        card.appendChild(po);
+      }
+
       const econ = el("div", "econ");
-      econ.innerHTML = "Payout: <b>" + opts.payout + " funds</b> (base " + ctx.params.base_payout + " × " + score.total + "% × clout " + opts.cloutMult + "×) · " +
+      econ.innerHTML = (score.failed
+          ? "Payout: <b>0 funds</b> (failed case)"
+          : "Payout: <b>" + opts.payout + " funds</b> (base " + ctx.params.base_payout + " × " + score.total + "% × clout " + opts.cloutMult + "×)") +
+        (opts.xpLine ? " · " + opts.xpLine : "") + " · " +
         (opts.saved ? "Progress saved to slot " + opts.slot : "<em>not saved (guest)</em>");
       card.appendChild(econ);
 
       const row = el("div", "btnrow");
-      const again = el("button", "btn primary", "Another case →");
-      const hub = el("button", "btn ghost", "Back to hospital");
-      again.onclick = () => opts.onAgain();
+      if (opts.onAgain) {
+        const again = el("button", "btn primary", "Another case →");
+        again.onclick = () => opts.onAgain();
+        row.append(again);
+      }
+      const hub = el("button", "btn" + (opts.onAgain ? " ghost" : " primary"), "Back to the ward");
       hub.onclick = () => opts.onHub();
-      row.append(again, hub);
+      row.append(hub);
       card.appendChild(row);
       show(card);
     },
@@ -676,7 +935,8 @@
       card.appendChild(el("p", "sub", (p.guest ? "Guest resident (progress not saved)" : ((p.user && p.user.email) || "Resident")) + " · UMass Memorial IR"));
       const box = el("div", "dossier");
       const dl = el("div", "doslines");
-      [["Funds", s.funds || 0], ["Academic Clout", (s.clout || 0) + " — " + tier.name],
+      [["Level", p.level ? "Lv " + p.level.level + " — " + p.level.title + " (XP " + (s.xp || 0) + (p.level.next ? "/" + p.level.next.xp : "") + ")" : "Lv 1"],
+       ["Funds", s.funds || 0], ["Academic Clout", (s.clout || 0) + " — " + tier.name],
        ["Payout multiplier", "×" + (tier.payout_mult || 1)], ["Cases completed", s.casesCompleted || 0],
        ["Best debrief", (s.bestScore || 0) + "/100"], ["Devices owned", Object.keys(s.inventory || {}).length],
        ["Podium defenses", Object.values(s.defenses || {}).reduce((a, b) => a + b, 0)],
@@ -756,5 +1016,5 @@
     },
   };
 
-  root.IRUI = { overlay, clear, toast, Auth, EMR, Angio, Debrief, Shop, SimLab, CampusMap, Elevator, Conference, CasePick, CallRoom, Lounge, Bag };
+  root.IRUI = { overlay, clear, toast, Auth, EMR, Preop, LocationPick, Angio, Debrief, Shop, SimLab, CampusMap, Elevator, Conference, CasePick, CallRoom, Lounge, Bag };
 })(window);

@@ -79,14 +79,15 @@
 
       const startGame = async () => {
         status.setText("Loading case data…");
+        const FRESH = { funds: 0, clout: 0, casesCompleted: 0, bestScore: 0, xp: 0 };
         if (S.user && !S.guest) {
           try {
             const slots = await root.IRNet.loadSlots();
             const existing = slots.find(x => x.slot === 1);
-            S.save = existing ? existing.save : { funds: 0, clout: 0, casesCompleted: 0, bestScore: 0 };
-          } catch (e) { S.save = { funds: 0, clout: 0, casesCompleted: 0, bestScore: 0 }; }
+            S.save = existing ? existing.save : Object.assign({}, FRESH);
+          } catch (e) { S.save = Object.assign({}, FRESH); }
         } else {
-          S.save = { funds: 0, clout: 0, casesCompleted: 0, bestScore: 0 };
+          S.save = Object.assign({}, FRESH);
         }
         try {
           // every v_game_ready procedure is playable (P4: data-only expansion)
@@ -95,6 +96,10 @@
           const startId = S.cases.some(c => c.id === S.save.lastCase) ? S.save.lastCase : S.cases[0].id;
           S.bundle = await root.IRGameData.loadCase(startId);
           root.IREcon.ensureInventory(S.save, S.bundle.config);
+          // preop rules for every ready procedure (ward spawning); tolerate failure
+          try { S.preop = await root.IRGameData.loadPreopMap(); } catch (e) { S.preop = {}; }
+          // fill the ward beds (level-gated NPCs; migrates old saves in place)
+          root.IRWard.ensureWard(S.save, S.cases, S.bundle.config, Date.now(), Math.random, S.preop);
           root.IRUI.clear();
           this.scene.start("Overworld");
         } catch (e) {
@@ -176,7 +181,10 @@
       // --- HUD + campus map key
       const who = S.guest ? "guest (no save)" : ((S.user && S.user.email) || "resident");
       this._hud = hud(this, "");
-      const refreshHud = () => this._hud.setText("Funds " + S.save.funds + " · Cases " + S.save.casesCompleted + " · " + who + "\n[M] map · [B] bag · [E] enter · arrows/WASD walk");
+      const refreshHud = () => {
+        const lv = root.IRWard.levelFor((S.bundle && S.bundle.config) || {}, S.save.xp || 0);
+        this._hud.setText("Lv " + lv.level + " " + lv.title + " · Funds " + S.save.funds + " · Cases " + S.save.casesCompleted + " · " + who + "\n[M] map · [B] bag · [E] enter · arrows/WASD walk");
+      };
       refreshHud();
       const mapBtn = this.add.text(950, 8, "🗺 MAP [M]", { fontFamily: "monospace", fontSize: "13px", color: "#ffe08a", backgroundColor: "#0e1420cc", padding: { x: 8, y: 5 } })
         .setOrigin(1, 0).setScrollFactor(0).setDepth(1e6).setInteractive({ useHandCursor: true });
@@ -361,7 +369,33 @@
     B: { title: "Basement — Sim Lab & Supply Chain" },
     1: { title: "1st Floor — Main Lobby" },
     2: { title: "2nd Floor — Inpatient Wards" },
-    3: { title: "3rd Floor — Interventional Radiology" },
+    3: { title: "3rd Floor — IR, CT & Ultrasound" },
+  };
+  const ROOM_LABEL = { ir_suite: "IR Suite", ct_suite: "CT Suite", us_room: "Ultrasound Room", bedside: "Bedside" };
+  // Ward bed slots on floor 2 (grid-aligned; Y-sorted with the player)
+  const BED_POS = [[540, 300], [620, 300], [700, 300], [540, 470], [620, 470], [700, 470]];
+
+  // ---- shared case-flow helpers -------------------------------------------
+  function persistSave() {
+    if (S.guest || !S.user) return;
+    S.save.updatedAt = new Date().toISOString();
+    root.IRNet.writeSlot(S.slot, S.save).catch(e => root.IRUI.toast("Save failed: " + (e.message || e)));
+  }
+  function backToHub(scene) {
+    root.IRUI.clear();
+    scene.busy = false;
+    scene.input.keyboard.resetKeys();
+    if (scene._refreshHud) scene._refreshHud();
+    if (scene._refreshBeds) scene._refreshBeds();
+    if (scene._refreshRooms) scene._refreshRooms();
+  }
+  function ensureWardState() {
+    return root.IRWard.ensureWard(S.save, S.cases, (S.bundle && S.bundle.config) || {}, Date.now(), Math.random, S.preop || {});
+  }
+  const cloutMultOf = (cfg) => {
+    const tiers = (cfg.clout_tiers && cfg.clout_tiers.tiers) || [{ min: 0, payout_mult: 1 }];
+    let m = 1; tiers.forEach(t => { if ((S.save.clout || 0) >= t.min) m = t.payout_mult; });
+    return m;
   };
 
   const Hospital = {
@@ -414,7 +448,11 @@
       }
 
       // --- shared helpers ---------------------------------------------------
-      const refreshHud = () => this._hud.setText(FLOOR_INFO[floor].title + "\nFunds " + S.save.funds + " · Cases " + S.save.casesCompleted + " · Best " + S.save.bestScore);
+      const refreshHud = () => {
+        const lv = root.IRWard.levelFor((S.bundle && S.bundle.config) || {}, S.save.xp || 0);
+        this._hud.setText(FLOOR_INFO[floor].title + "\nLv " + lv.level + " " + lv.title + " · XP " + (S.save.xp || 0) +
+          (lv.next ? "/" + lv.next.xp : "") + " · Funds " + S.save.funds + " · Cases " + S.save.casesCompleted + " · Best " + S.save.bestScore);
+      };
       this._hud = hud(this, ""); this._refreshHud = refreshHud;
       const openOverlay = (fn) => {
         const close = () => { root.IRUI.clear(); this.busy = false; this.input.keyboard.resetKeys(); refreshHud(); };
@@ -444,28 +482,98 @@
         door.fillStyle(0x2a4a66, 1).fillRect(448, 583, 30, 14).fillRect(482, 583, 30, 14);
         portals.push({ x: 480, y: 575, w: 100, h: 44, label: "Exit to campus", onEnter: () => this.scene.start("Overworld") });
       } else if (floor === "2") {
-        room(280, 330, 170, 110, 0x2f6f4f, 0x3f8f6f, "Inpatient Ward\n(bedside EMR)");
-        [[560, 300], [620, 300], [680, 300], [560, 480], [620, 480], [680, 480]].forEach(([px, py]) => {
-          this.add.image(px, py, "t_bed").setOrigin(0.5, 0).setDepth(py + 56); solid(px, py + 30, 36, 44);
-        });
+        // ---- Inpatient ward: every bed holds a level-gated NPC patient ----
+        ensureWardState();
         this.add.image(770, 160, "t_board").setOrigin(0).setDepth(3);
         room(210, 510, 130, 76, 0x6a5530, 0x9a8550, "Staff Lounge");
-        flavor(420, 520, "Nurses' station", "\"Bed 4 pulled his IV again. Also, are you consenting your port patient or not?\"");
-        portals.push({ x: 280, y: 330, w: 170, h: 110, label: "Round on the next patient", onEnter: () => startRounds(this, openOverlay) });
+        flavor(300, 380, "Nurses' station", "\"Rounds list is on the beds — anyone with a red flag on their chart is NOT a case, no matter how much the primary team wants it.\"");
+
+        const bedSolids = [];
+        BED_POS.forEach(([px, py], i) => {
+          this.add.image(px, py, "t_bed").setOrigin(0.5, 0).setDepth(py + 56);
+          solid(px, py + 30, 36, 44);
+          bedSolids.push(null);
+          label(this, px, py - 8, "Bed " + (i + 1), 9).setAlpha(0.55).setDepth(4);
+        });
+
+        // patient overlays + portal labels, rebuilt whenever the ward changes
+        // (portal labels live on this._portals — the copies makePortals keeps)
+        this._ptSprites = [];
+        const TINTS = [0xffffff, 0xf2d1c9, 0xd1e0f2, 0xf2ecc9, 0xd9f2c9, 0xe6d1f2];
+        this._refreshBeds = () => {
+          ensureWardState();
+          this._ptSprites.forEach(sp => sp && sp.destroy());
+          this._ptSprites = [];
+          S.save.ward.beds.forEach((rec, i) => {
+            const [px, py] = BED_POS[i] || [];
+            if (px == null) return;
+            const portal = (this._portals || []).find(p => p.bedIdx === i);
+            if (rec && rec.seed) {
+              const sp = this.add.image(px, py + 8, "t_pt").setOrigin(0.5, 0).setDepth(py + 57)
+                .setTint(TINTS[(rec.seed || 0) % TINTS.length]);
+              this._ptSprites.push(sp);
+              const flagged = (rec.pending || []).length ? " · labs pending" : "";
+              if (portal) portal.label = "Bed " + (i + 1) + " — " + (rec.procTitle || "consult") + flagged;
+            } else {
+              this._ptSprites.push(null);
+              if (portal) portal.label = "Bed " + (i + 1) + " — being turned over";
+            }
+          });
+        };
+        BED_POS.forEach(([px, py], i) => {
+          portals.push({ x: px, y: py + 30, w: 44, h: 60, bedIdx: i, label: "Bed " + (i + 1),
+            onEnter: () => WardFlow.openBed(this, i) });
+        });
+        // respawn ticker: refill beds whose (compressed 2–5 min) timer is due
+        this.time.addEvent({ delay: 10000, loop: true, callback: () => { if (!this.busy) this._refreshBeds(); } });
+
         portals.push({ x: 210, y: 510, w: 130, h: 76, label: "Staff lounge — attending's pearls", onEnter: () => openOverlay((close) =>
             root.IRUI.Lounge.show(S.bundle.procedure, { onClose: close })) });
       } else if (floor === "3") {
-        room(300, 350, 200, 130, 0x3a4a7a, 0x5a6fbf, "Angio Suite");
-        this.add.image(300, 300, "t_carm").setOrigin(0.5, 0).setDepth(362);
-        room(660, 320, 150, 80, 0x2f4a5a, 0x4f7a9f, "Control Room");
+        // ---- Procedure floor: IR / CT / US rooms hold ONE sent patient each ----
+        room(400, 350, 180, 120, 0x3a4a7a, 0x5a6fbf, "IR Suite");
+        this.add.image(400, 302, "t_carm").setOrigin(0.5, 0).setDepth(364);
+        room(190, 340, 120, 84, 0x4a5a3a, 0x6f8f5a, "CT Suite");
+        this.add.image(190, 288, "t_ctgantry").setOrigin(0.5, 0).setDepth(350);
+        room(640, 350, 130, 84, 0x2f4a5a, 0x4f7a9f, "Ultrasound\nRoom");
+        this.add.image(690, 310, "t_uscart").setOrigin(0.5, 0).setDepth(354);
         room(680, 500, 150, 80, 0x4a3f6a, 0x7a6a9f, "Call Room");
-        this.add.image(150, 480, "t_bed").setOrigin(0.5, 0).setDepth(536); solid(150, 510, 36, 44); // holding bay
-        label(this, 150, 462, "Holding", 9).setAlpha(0.6).setDepth(4);
         flavor(480, 510, "Reading room", "Rows of dark monitors. Somebody is dictating very, very fast.");
-        portals.push({ x: 300, y: 350, w: 200, h: 130, label: "Angio suite", onEnter: () => { this.busy = false; root.IRUI.toast("Cases start at the bedside — round on the 2nd-floor ward first."); } });
-        portals.push({ x: 660, y: 320, w: 150, h: 80, label: "Control room", onEnter: () => { this.busy = false; root.IRUI.toast("Behind leaded glass, the techs guard the good chairs and the good snacks."); } });
+
+        const ROOM_AT = { ct_suite: [190, 340], ir_suite: [400, 350], us_room: [640, 350] };
+        this._roomSprites = [];
+        this._refreshRooms = () => {
+          this._roomSprites.forEach(sp => sp && sp.destroy());
+          this._roomSprites = [];
+          root.IRWard.ROOMS.forEach(loc => {
+            const t = (S.save.rooms || {})[loc];
+            if (!t) return;
+            const [rx, ry] = ROOM_AT[loc];
+            const bed = this.add.image(rx, ry - 14, "t_bed").setOrigin(0.5, 0).setDepth(ry + 44);
+            const pt = this.add.image(rx, ry - 6, "t_pt").setOrigin(0.5, 0).setDepth(ry + 45);
+            this._roomSprites.push(bed, pt);
+          });
+        };
+        this._refreshRooms();
+
+        const EMPTY_MSG = {
+          ir_suite: "The IR suite is dark. Send a patient here from the 2nd-floor ward first.",
+          ct_suite: "The CT gantry hums, bore empty. Send a patient here from the ward first.",
+          us_room: "Gel warmer's on, room's empty. Send a patient here from the ward first.",
+        };
+        Object.keys(ROOM_AT).forEach(loc => {
+          const [rx, ry] = ROOM_AT[loc];
+          portals.push({ x: rx, y: ry, w: loc === "ir_suite" ? 180 : 130, h: 90,
+            label: ROOM_LABEL[loc],
+            onEnter: () => {
+              const t = (S.save.rooms || {})[loc];
+              if (!t) { this.busy = false; root.IRUI.toast(EMPTY_MSG[loc]); return; }
+              WardFlow.operate(this, loc, t);
+            } });
+        });
         portals.push({ x: 680, y: 500, w: 150, h: 80, label: "Call room — your profile", onEnter: () => openOverlay((close) =>
-            root.IRUI.CallRoom.show({ save: S.save, user: S.user, guest: S.guest, tiers: (S.bundle.config.clout_tiers || {}).tiers || [], cases: S.cases }, { onClose: close })) });
+            root.IRUI.CallRoom.show({ save: S.save, user: S.user, guest: S.guest, tiers: (S.bundle.config.clout_tiers || {}).tiers || [],
+              level: root.IRWard.levelFor(S.bundle.config, S.save.xp || 0), cases: S.cases }, { onClose: close })) });
       } else { // basement
         room(280, 380, 170, 110, 0x6f5a2f, 0x9f8a4f, "Sim Lab");
         room(680, 380, 170, 110, 0x2f5a6f, 0x4f8a9f, "Procurement /\nSupply Chain");
@@ -484,107 +592,171 @@
       this.physics.add.collider(this.player, solids);
       refreshHud();
       makePortals(this, portals);
+      if (this._refreshBeds) this._refreshBeds(); // initial NPC draw + live portal labels
     },
     update() { movePlayer(this, 200); updatePortals(this); },
   };
 
   // ======================================================================
-  // P4: pick tonight's case from every game-ready procedure (v_game_ready).
-  // With one ready case this is invisible; new procedures appear here from
-  // pure dashboard data entry.
-  function startRounds(scene, openOverlay) {
-    if (!S.cases || S.cases.length <= 1) { S.save.lastCase = S.bundle.procedure.id; CaseFlow.run(scene); return; }
-    openOverlay((close) => root.IRUI.CasePick.show(S.cases, S.bundle.procedure.id, {
-      onClose: close,
-      onPick: async (id) => {
-        try {
-          if (id !== S.bundle.procedure.id) {
-            root.IRUI.toast("Pulling the case files…");
-            S.bundle = await root.IRGameData.loadCase(id);
-          }
-          S.save.lastCase = id;
-          root.IRUI.clear();          // busy stays true — CaseFlow owns the overlay now
-          CaseFlow.run(scene);
-        } catch (e) { close(); root.IRUI.toast("Could not load case: " + (e.message || e)); }
-      },
-    }));
-  }
-
-  // ======================================================================
-  // Case flow: EMR → Angio → Debrief (overlay-driven). Pauses the Phaser hub.
-  const CaseFlow = {
-    run(scene) {
-      const B = S.bundle;
-      let seed = (Math.random() * 2 ** 31) | 0;
-      let patient = root.IRPatient.generate(B.generator, seed);
-
-      const backToHub = () => { root.IRUI.clear(); scene.busy = false; scene.input.keyboard.resetKeys(); if (scene._refreshHud) scene._refreshHud(); };
-
-      const showEMR = () => root.IRUI.EMR.show(patient, B.procedure, {
-        onReroll: () => { seed = (Math.random() * 2 ** 31) | 0; patient = root.IRPatient.generate(B.generator, seed); showEMR(); },
-        onOrderCorrection: () => {
-          // clinically: transfuse platelets to a safe range, then recheck
-          patient.coag.platelets = Math.max(patient.coag.platelets, 60);
-          patient.labs.platelets.value = patient.coag.platelets; patient.labs.platelets.flag = "";
-          patient.canProceed = true;
-          patient.violationsIfProceed = [];
-          patient.warnings = patient.warnings.filter(w => !/platelet/i.test(w.text));
-          root.IRUI.toast("Platelets transfused → rechecked ≥ threshold. Cleared to proceed.");
-          showEMR();
-        },
-        onProceed: () => {
-          const missing = root.IREcon.missingKit(S.save, B.config, B.procedure.id);
-          if (missing.length) { root.IRUI.toast("⛔ Kit incomplete — restock at procurement: " + missing.join(", ")); return; }
-          runAngio();
-        },
-        onCancel: () => backToHub(),
-        onViewBag: () => root.IRUI.Bag.show(
-          { inventory: root.IREcon.ensureInventory(S.save, B.config), devices: B.devices },
-          { onClose: () => showEMR() }),
-      });
-
-      const cloutMult = () => {
-        const tiers = (B.config.clout_tiers && B.config.clout_tiers.tiers) || [{ min: 0, payout_mult: 1 }];
-        let m = 1; tiers.forEach(t => { if (S.save.clout >= t.min) m = t.payout_mult; });
-        return m;
-      };
-
-      const runAngio = () => {
-        root.IRUI.toast("🛏 The patient is wheeled up to the 3rd-floor angio suite.");
-        const engine = root.IRAngio.create({
-          params: B.params, vesselMap: B.vesselMap, devices: B.devices,
-          complications: B.complications.filter(c => c.procedure_id === B.procedure.id),
-          patient, config: B.config, seed,
-          inventory: root.IREcon.ensureInventory(S.save, B.config),
+  //  WARD FLOW — bedside consult → labs / turn-down / location → battle.
+  //  Replaces the old single-portal CaseFlow: every ward bed is an NPC whose
+  //  procedure is level-gated (v_game_ready.min_level vs save.xp), preop rules
+  //  come from procedure_game_params.preop, and CT/US/IR rooms hold one
+  //  patient each (spec).
+  const WardFlow = {
+    async openBed(scene, i) {
+      const rec = (S.save.ward && S.save.ward.beds[i]) || null;
+      if (!rec || !rec.seed) { scene.busy = false; root.IRUI.toast("Housekeeping is still turning this bed over."); return; }
+      let bundle;
+      try { bundle = await root.IRGameData.loadCase(rec.procId); }
+      catch (e) { scene.busy = false; root.IRUI.toast("Chart unavailable: " + (e.message || e)); return; }
+      const showConsult = () => {
+        const patient = root.IRPatient.generate(bundle.generator, rec.seed);
+        const resolved = root.IRWard.resolvePending(rec, bundle.params.preop, bundle.config, Math.random);
+        root.IRWard.applyOverrides(patient, rec);
+        const ev = root.IRWard.evalPreop(patient, rec, bundle.params.preop);
+        if (resolved.length) persistSave(); // lab results landed on the chart
+        root.IRUI.Preop.show(patient, bundle.procedure, ev, rec, {
+          bedNo: i + 1, config: bundle.config, resolvedNotes: resolved,
+          onLater: () => backToHub(scene),
+          onOrderLab: (id) => { root.IRWard.orderLabs(rec, [id]); persistSave(); if (scene._refreshBeds) scene._refreshBeds(); },
+          onTurnDown: () => {
+            const r = root.IRWard.turnDown(S.save, rec, bundle.config);
+            const why = rec.contra ? rec.contra.label : null;
+            root.IRWard.clearBed(S.save, i, bundle.config, Date.now(), Math.random);
+            persistSave();
+            backToHub(scene);
+            root.IRUI.toast(r.correct
+              ? "✅ Right call — " + why + " is an absolute contraindication. +" + r.cloutDelta + " clout, +" + r.xp + " XP."
+              : "❌ That patient was operable (or fixable with preop orders). " + r.cloutDelta + " clout.", 4600);
+          },
+          onPerform: () => {
+            const missing = root.IREcon.missingKit(S.save, bundle.config, bundle.procedure.id);
+            if (missing.length) { root.IRUI.toast("⛔ Kit incomplete — restock at procurement: " + missing.join(", "), 3600); return; }
+            root.IRUI.LocationPick.show(bundle.procedure, S.save.rooms, {
+              onBack: () => showConsult(),
+              onPick: (loc) => WardFlow.route(scene, i, rec, bundle, loc),
+            });
+          },
         });
-        root.IRUI.Angio.start(engine, { procedure: B.procedure, params: B.params, patient,
-          config: B.config, devices: B.devices, inventory: root.IREcon.ensureInventory(S.save, B.config) },
-          { onFinish: (score) => finish(score) });
       };
+      showConsult();
+    },
 
-      const finish = async (score) => {
-        const mult = cloutMult();
-        const payout = Math.round(B.params.base_payout * (score.total / 100) * mult);
+    // Location chosen: bedside starts NOW; other rooms get a wheel-away cutscene
+    // and the patient waits there (one per room — spec).
+    route(scene, i, rec, bundle, loc) {
+      const ticket = { procId: rec.procId, seed: rec.seed, labOverrides: rec.labOverrides,
+                       pending: [], contra: rec.contra, chosenLoc: loc, sentAt: Date.now() };
+      if (loc === "bedside") {
+        root.IRUI.clear();
+        root.IRUI.toast("🧤 You gown and glove at the bedside.");
+        WardFlow.battle(scene, ticket, bundle, { fromBed: i });
+        return;
+      }
+      S.save.rooms[loc] = ticket;
+      root.IRWard.clearBed(S.save, i, bundle.config, Date.now(), Math.random);
+      persistSave();
+      root.IRUI.clear();
+      WardFlow.wheelAway(scene, i, loc);
+    },
+
+    // Cutscene: the patient is wheeled from the bed toward the elevator (spec).
+    wheelAway(scene, bedIdx, loc) {
+      if (scene._refreshBeds) scene._refreshBeds(); // hides the static patient (bed record already cleared)
+      const [px, py] = BED_POS[bedIdx] || [480, 400];
+      const bedImg = scene.add.image(px, py, "t_bed").setOrigin(0.5, 0).setDepth(9000);
+      const ptImg = scene.add.image(px, py + 8, "t_pt").setOrigin(0.5, 0).setDepth(9001);
+      scene.tweens.add({
+        targets: [bedImg, ptImg], x: 240, y: 300, duration: 1500, ease: "Sine.easeIn",
+        onComplete: () => {
+          scene.tweens.add({ targets: [bedImg, ptImg], alpha: 0, duration: 320,
+            onComplete: () => { bedImg.destroy(); ptImg.destroy(); } });
+          root.IRUI.toast("🛗 Patient transported to the " + ROOM_LABEL[loc] + " (3rd floor). Meet them there.", 3800);
+          scene.busy = false; scene.input.keyboard.resetKeys();
+        },
+      });
+    },
+
+    // Interacting with a waiting patient on floor 3.
+    async operate(scene, loc, ticket) {
+      let bundle;
+      try { bundle = await root.IRGameData.loadCase(ticket.procId); }
+      catch (e) { scene.busy = false; root.IRUI.toast("Chart unavailable: " + (e.message || e)); return; }
+      WardFlow.battle(scene, ticket, bundle, { room: loc });
+    },
+
+    // Shared battle launcher (bedside + rooms). Preop violations become CITED
+    // ledger penalties + complication-risk multipliers; the wrong room costs
+    // points but the case still happens there (proceed-and-penalize).
+    battle(scene, ticket, bundle, o) {
+      const patient = root.IRPatient.generate(bundle.generator, ticket.seed);
+      root.IRWard.applyOverrides(patient, ticket);
+      const ev = root.IRWard.evalPreop(patient, ticket, bundle.params.preop);
+      const correct = bundle.params.location || "ir_suite";
+      const preop = { penalties: ev.penalties.slice(), riskMods: ev.riskMods, postop: ev.postop.slice() };
+      let wrongLocation = null;
+      if (ticket.chosenLoc !== correct) {
+        preop.penalties.push({ cat: "safety", delta: -5,
+          reason: "Performed in the " + ROOM_LABEL[ticket.chosenLoc] + " — standard of care for " + bundle.procedure.title + " is the " + ROOM_LABEL[correct] + ".",
+          cite: "Procedure general considerations [1]" });
+        wrongLocation = "Wrong venue: " + bundle.procedure.title + " belongs in the " + ROOM_LABEL[correct] + ". (−5)";
+      }
+      const engine = root.IRAngio.create({
+        params: bundle.params, vesselMap: bundle.vesselMap, devices: bundle.devices,
+        complications: bundle.complications.filter(c => c.procedure_id === bundle.procedure.id),
+        patient, config: bundle.config, seed: ticket.seed,
+        inventory: root.IREcon.ensureInventory(S.save, bundle.config),
+        preop,
+      });
+      root.IRUI.Angio.start(engine, {
+        procedure: bundle.procedure, params: bundle.params, patient, config: bundle.config,
+        devices: bundle.devices, inventory: root.IREcon.ensureInventory(S.save, bundle.config),
+        location: ticket.chosenLoc, preopViolations: ev.violations, wrongLocation,
+      }, { onFinish: (score) => WardFlow.finish(scene, score, bundle, ticket, o) });
+    },
+
+    async finish(scene, score, bundle, ticket, o) {
+      const cfg = bundle.config;
+      const prog = cfg.progression || {};
+      const before = root.IRWard.levelFor(cfg, S.save.xp || 0);
+      let payout = 0, xp = 0, cloutDelta = 0;
+      const mult = cloutMultOf(cfg);
+      if (score.failed) {
+        cloutDelta = (prog.fail_clout || { bailed: -5, takeover: -5, kicked: -3 })[score.failed] || -5;
+        S.save.clout = Math.max(0, (S.save.clout || 0) + cloutDelta);
+      } else {
+        payout = Math.round(bundle.params.base_payout * (score.total / 100) * mult);
         S.save.funds += payout;
         S.save.casesCompleted += 1;
         S.save.bestScore = Math.max(S.save.bestScore || 0, score.total);
-        S.save.updatedAt = new Date().toISOString();
-        let saved = false;
-        if (!S.guest && S.user) {
-          try {
-            await root.IRNet.writeCaseLog({ procedure_id: B.procedure.id, score_total: score.total, score_detail: score.breakdown, patient_seed: { seed } });
-            await root.IRNet.writeSlot(S.slot, S.save);
-            saved = true;
-          } catch (e) { root.IRUI.toast("Save failed: " + (e.message || e)); }
-        }
-        root.IRUI.Debrief.show(score, { procedure: B.procedure, params: B.params }, {
-          payout, cloutMult: mult, saved, slot: S.slot,
-          onAgain: () => { seed = (Math.random() * 2 ** 31) | 0; patient = root.IRPatient.generate(B.generator, seed); showEMR(); },
-          onHub: () => backToHub(),
-        });
-      };
-
-      showEMR();
+        xp = root.IRWard.xpForScore(cfg, score.total);
+        S.save.xp = (S.save.xp || 0) + xp;
+      }
+      const after = root.IRWard.levelFor(cfg, S.save.xp || 0);
+      // free the room / respawn the bed (compressed 2–5 min window)
+      if (o.room) S.save.rooms[o.room] = null;
+      if (o.fromBed != null) root.IRWard.clearBed(S.save, o.fromBed, cfg, Date.now(), Math.random);
+      S.save.lastCase = bundle.procedure.id;
+      S.save.updatedAt = new Date().toISOString();
+      let saved = false;
+      if (!S.guest && S.user) {
+        try {
+          if (!score.failed) await root.IRNet.writeCaseLog({ procedure_id: bundle.procedure.id, score_total: score.total, score_detail: score.breakdown, patient_seed: { seed: ticket.seed } });
+          await root.IRNet.writeSlot(S.slot, S.save);
+          saved = true;
+        } catch (e) { root.IRUI.toast("Save failed: " + (e.message || e)); }
+      }
+      root.IRUI.Debrief.show(score, { procedure: bundle.procedure, params: bundle.params }, {
+        payout, cloutMult: mult, saved, slot: S.slot,
+        xpLine: score.failed ? "XP +0" : "XP +" + xp + " → Lv " + after.level + " " + after.title,
+        cloutDelta: score.failed ? cloutDelta : 0,
+        onHub: () => {
+          backToHub(scene);
+          if (after.level > before.level)
+            root.IRUI.toast("🎉 LEVEL UP — " + after.title + " (Lv " + after.level + "). New procedures can now appear on the ward.", 4800);
+        },
+      });
     },
   };
 

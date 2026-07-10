@@ -245,3 +245,20 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--text);
 .card.battle.angioscreen .blower{flex:0 0 auto;min-height:210px}
 .card.battle.angioscreen .bnarr{max-height:none}
 .card.battle.angioscreen .bscroll{max-height:34vh}
+
+/* ---- ward preop consult + battle additions (spec: ward NPCs / attending) ---- */
+.lab .miss{color:var(--muted);font-style:italic}
+.bequip{position:absolute;top:8px;left:8px;background:#0f1216;border:1px solid #3a4250;border-radius:6px;
+  padding:6px 8px;font-size:11px;color:var(--muted);font-family:var(--font-mono,monospace)}
+.bequip b{color:#e6edf5}
+.bhint-ct{color:var(--warn)}
+.bobj{font-size:11px;color:var(--muted);margin:2px 0}
+.bline.help{color:#cfe0d6;font-style:italic}
+.bcmd .btn.help{border-color:#8a7a3a;color:#e8d98a}
+.bcmd .btn.ghostd{opacity:.85}
+.attn{position:absolute;left:0;bottom:24px;display:flex;align-items:flex-end;gap:6px;z-index:5;
+  animation:attn-in .35s ease-out}
+.attn-bubble{max-width:300px;background:#f2efe6;color:#22262c;border-radius:10px 10px 10px 2px;
+  padding:8px 10px;font-size:12px;line-height:1.45;box-shadow:0 3px 10px #0008}
+.attn.mad .attn-bubble{background:#f2dcd6;border:1px solid #b05a4a}
+@keyframes attn-in{from{transform:translateX(-46px);opacity:0}to{transform:none;opacity:1}}

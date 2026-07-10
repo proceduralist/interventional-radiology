@@ -1,7 +1,9 @@
 /* Battle-screen Angio (jsdom) — the Pokémon-style command loop:
-   root menu (Actions/Bag/Imaging/Notes), arming a tool from the Bag cart, arming
-   imaging, the nested Actions taxonomy, proceed-and-penalize on a wrong maneuver,
-   and a clean best-path run to debrief. Run: npm i jsdom, node game/tests/battle.jsdom.js */
+   root menu (Actions/Bag/Imaging/Ask For Help/Leave Procedure), arming a tool,
+   imaging, nested Actions taxonomy, proceed-and-penalize on possible-but-wrong
+   maneuvers, the attending hard-block escalation (5 strikes → takeover), the
+   hint cap (>5 → kicked), Leave Procedure, and a clean best-path run.
+   Run: npm i jsdom, node game/tests/battle.jsdom.js */
 "use strict";
 const assert = require("assert");
 const path = require("path");
@@ -20,7 +22,18 @@ const $$ = (s) => Array.from(win.document.querySelectorAll(s));
 const click = (el) => { assert.ok(el, "clickable exists"); el.onclick ? el.onclick() : el.click(); };
 const byText = (sel, re) => $$(sel).find(b => re.test(b.textContent));
 
-const CONFIG = { scoring_weights: { safety: 40, radiation: 20, renal: 20, technical: 20 } };
+const CONFIG = {
+  scoring_weights: { safety: 40, radiation: 20, renal: 20, technical: 20 },
+  // taxonomy on config so step.blocked "cat:wire" matchers resolve in the engine
+  action_taxonomy: { categories: [
+    { id: "wire", name: "Wire", moves: [["advance-wire", "Advance guidewire"], ["exchange-wire", "Exchange wire"]] },
+    { id: "access", name: "Access & sheath", moves: [["us-micropuncture", "US-guided micropuncture"], ["landmark-x", "Landmark puncture"], ["place-sheath", "Place vascular sheath"]] },
+    { id: "imaging", name: "Imaging", moves: [["fluoro", "Fluoroscopy (spot)"], ["dsa", "DSA run"]] },
+  ] },
+  attending_dialogue: { strike_cap: 5, hint_cap: 5,
+    blocked: ["Excuse me lad, but aren't you missing a step?", "Think.", "You cannot do that yet.", "Stop.", "You clearly need to read a book. I am taking over this case."],
+    kicked: "That's five hints. Scrub out and go read." },
+};
 const VESSEL = { graph: { nodes: [{ id: "caj", fragility: 5, tortuosity: 1 }, { id: "rij_access", fragility: 3, tortuosity: 2 }] } };
 const DEVICES = [
   { id: "micropuncture-needle-21g", name: "21G micropuncture needle", device_class: "needle", status: "published" },
@@ -31,17 +44,14 @@ const DEVICES = [
   { id: "port-catheter-8f", name: "8F chest port + catheter", device_class: "port", status: "published" },
   { id: "huber-needle-20g", name: "20G Huber needle", device_class: "needle", status: "published" },
 ];
-const TAXONOMY = [
-  { id: "access", name: "Access & sheath", moves: [["us-micropuncture", "US-guided micropuncture"], ["landmark-x", "Landmark puncture"], ["place-sheath", "Place vascular sheath"]] },
-  { id: "imaging", name: "Imaging", moves: [["fluoro", "Fluoroscopy (spot)"], ["dsa", "DSA run"]] },
-];
+const TAXONOMY = CONFIG.action_taxonomy.categories;
 const INV = {}; ["micropuncture-needle-21g", "mp-wire-018", "transitional-dilator-5f", "bentson-035-145", "peelaway-sheath-9f", "port-catheter-8f", "huber-needle-20g"].forEach(id => INV[id] = true);
 const patient = () => ({ pmh: [], meds: [], coag: { platelets: 250 }, renal: { contrastLimitMl: 100 }, labs: {}, seed: 1, __rng: () => 0.999 });
 const PARAMS = { fluoro_target_min: 3.0, base_payout: 1200, case_steps: STEPS };
 
-function startBattle(onFinish) {
+function startBattle(onFinish, ctxExtra) {
   const engine = win.IRAngio.create({ params: PARAMS, vesselMap: VESSEL, devices: DEVICES, complications: [], patient: patient(), config: CONFIG, seed: 1, inventory: INV });
-  win.IRUI.Angio.start(engine, { procedure: { title: "Chest port placement" }, params: PARAMS, patient: patient(), taxonomy: TAXONOMY, devices: DEVICES, inventory: INV }, { onFinish });
+  win.IRUI.Angio.start(engine, Object.assign({ procedure: { title: "Chest port placement" }, params: PARAMS, patient: patient(), config: CONFIG, taxonomy: TAXONOMY, devices: DEVICES, inventory: INV }, ctxExtra || {}), { onFinish });
   return engine;
 }
 const openActions = () => click(byText(".bmenu .btn", /^Actions$/));
@@ -49,26 +59,29 @@ const openActions = () => click(byText(".bmenu .btn", /^Actions$/));
 console.log("battle screen: menu, bag, imaging, actions");
 let engine = startBattle(() => {});
 
-t("root command menu shows Actions / Bag / Imaging / Notes over a patient scene", () => {
+t("root command menu shows Actions / Bag / Imaging / Ask For Help / Leave (spec)", () => {
   assert.ok(win.document.querySelector(".card.battle .bscene .bsvg"), "patient + C-arm scene");
-  assert.ok(win.document.querySelector(".bstatus .bbar i"), "patient stability bar (enemy HP)");
-  ["Actions", "Bag", "Imaging", "Notes"].forEach(lbl => assert.ok(byText(".bmenu .btn", new RegExp("^" + lbl + "$")), lbl + " command"));
+  assert.ok(win.document.querySelector(".bstatus .bbar i"), "patient stability bar (enemy HP, top-right)");
+  assert.ok(win.document.querySelector(".bscene .bequip"), "equipped-item hub (top-left)");
+  assert.ok(win.document.querySelector(".bscene .bcase .bmeters"), "fluoro/DAP/contrast hub (bottom-left)");
+  ["Actions", "Bag", "Imaging", "Ask For Help", "Leave Procedure"].forEach(lbl => assert.ok(byText(".bmenu .btn", new RegExp("^" + lbl + "$")), lbl + " command"));
 });
 
-t("Bag opens the supply cart and arming a tool shows it on the command bar", () => {
+t("Bag opens the supply cart and arming a tool shows it in the equip hub", () => {
   click(byText(".bmenu .btn", /^Bag$/));
   const slots = $$(".bcart .bslot");
   assert.strictEqual(slots.length, 7, "one slot per carried device");
   click(slots.find(s => /chest port/.test(s.title)));       // arm the port catheter
   click(byText(".bmenu .btn", /Back/));
-  assert.ok(/Armed tool:.*chest port/i.test(win.document.querySelector(".barm").textContent), "armed tool shown");
+  openActions(); click(byText(".btn.ghost", /Back/));       // any rerender keeps it
+  assert.ok(/chest port/i.test(win.document.querySelector(".bequip").textContent), "armed tool shown top-left");
 });
 
 t("Imaging arms ultrasound (and it is offered, not just fluoro)", () => {
   click(byText(".bmenu .btn", /^Imaging$/));
   assert.ok(byText(".btn.amove", /Ultrasound/), "ultrasound is an imaging option");
   click(byText(".btn.amove", /Ultrasound/));
-  assert.ok(/Imaging:.*ultrasound/i.test(win.document.querySelector(".barm").textContent), "ultrasound armed");
+  assert.ok(/ultrasound/i.test(win.document.querySelector(".bequip").textContent), "ultrasound armed in equip hub");
 });
 
 t("Actions shows the step maneuvers AND the expansive nested taxonomy", () => {
@@ -81,12 +94,69 @@ t("Actions shows the step maneuvers AND the expansive nested taxonomy", () => {
   click(byText(".btn.ghost", /Back/));
 });
 
-t("a wrong maneuver from the taxonomy proceeds and takes the default penalty", () => {
-  // at step 1; pick an unrelated move → step default (off-protocol) fires and advances
-  click(byText(".btn.bcat", /Access & sheath/));
-  click(byText(".btn.amove", /Place vascular sheath/));
+t("a possible-but-wrong maneuver proceeds and takes the default penalty", () => {
+  // at step 1; a DSA run is physically possible (not in step.blocked) → default fires, advances
+  click(byText(".btn.bcat", /Imaging/));
+  click(byText(".btn.amove", /DSA run/));
   assert.strictEqual(engine.currentStep().n, 2, "advanced despite the wrong move");
   assert.ok(engine.ledger.some(l => l.category === "technical" && l.delta < 0), "penalty logged");
+});
+
+console.log("battle screen: attending hard-blocks, hints, leave");
+t("a physically impossible maneuver is BLOCKED: attending pokes in, no advance", () => {
+  engine = startBattle(() => {});
+  openActions();
+  click(byText(".btn.bcat", /Access & sheath/));
+  click(byText(".btn.amove", /Place vascular sheath/)); // step 1 blocked list (exact id)
+  assert.strictEqual(engine.currentStep().n, 1, "did NOT advance");
+  assert.strictEqual(engine.state().strikes, 1, "strike counted");
+  assert.ok(win.document.querySelector(".bscene .attn .attn-bubble"), "attending appears in the scene");
+  assert.ok(/missing a step/i.test(win.document.querySelector(".attn-bubble").textContent), "first escalation line");
+});
+
+t("five impossible maneuvers → the attending takes over; case fails with 0 points", () => {
+  let final = null;
+  engine = startBattle((s) => { final = s; });
+  for (let k = 0; k < 5; k++) {
+    openActions();
+    click(byText(".btn.bcat", /Wire/));
+    click(byText(".btn.amove", /Advance guidewire/)); // cat:wire blocked at step 1
+    if (final) break;
+  }
+  assert.ok(final, "onFinish fired on takeover");
+  assert.strictEqual(final.failed, "takeover");
+  assert.strictEqual(final.total, 0, "no points (spec)");
+});
+
+t("Ask For Help shows an attending hint; the 6th ask kicks you out (0 points)", () => {
+  let final = null;
+  engine = startBattle((s) => { final = s; });
+  click(byText(".bmenu .btn", /^Ask For Help$/));
+  assert.ok(/Hint 1\/5/.test(win.document.querySelector(".attn-bubble").textContent), "hint counter shown");
+  assert.ok(engine.state().hints === 1, "engine tracked the hint");
+  for (let k = 0; k < 5; k++) { if (final) break; click(byText(".bmenu .btn", /^Ask For Help$/)); }
+  assert.ok(final, "kicked out fires finish");
+  assert.strictEqual(final.failed, "kicked");
+  assert.strictEqual(final.total, 0);
+});
+
+t("Leave Procedure bails the case: failed, 0 points", () => {
+  let final = null;
+  engine = startBattle((s) => { final = s; });
+  click(byText(".bmenu .btn", /^Leave Procedure$/));
+  click(byText(".btn.amove", /accept the failure/i));
+  assert.ok(final, "finish fired");
+  assert.strictEqual(final.failed, "bailed");
+  assert.strictEqual(final.total, 0);
+});
+
+t("per-location backdrops render (bedside shows a ward room, CT shows a gantry)", () => {
+  startBattle(() => {}, { location: "bedside" });
+  assert.ok(/Bedside — /.test(win.document.querySelector(".bh").textContent), "bedside header");
+  const svgBed = win.document.querySelector(".bsvg").innerHTML;
+  startBattle(() => {}, { location: "ct_suite" });
+  assert.ok(/CT Suite — /.test(win.document.querySelector(".bh").textContent), "CT header");
+  assert.notStrictEqual(win.document.querySelector(".bsvg").innerHTML, svgBed, "distinct scenes");
 });
 
 console.log("battle screen: clean best-path run");
