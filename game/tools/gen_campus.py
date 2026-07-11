@@ -69,6 +69,22 @@ def build_terrain():
         for r in range(ROWS):
             for cc in (v-2, v+2):
                 if 0 <= cc < COLS and g[r][cc] == ".": g[r][cc] = "s"
+    # --- The Quad: striped mowed lawn between the Med School (Sherman/MSB, N),
+    #     the research towers (Lazare/DiMare, W) and UMass Memorial (E). A paved
+    #     promenade links every surrounding entrance so it reads as a real, walked
+    #     space (project spec: realized places, not signposts). Vertical q/Q
+    #     stripes are the mowing rows the lawn painter renders. --------------------
+    for r in range(19, 31):
+        for c in range(17, 31):
+            if g[r][c] == ".": g[r][c] = "q" if c % 2 == 0 else "Q"
+    paths = []
+    paths += [(c, 28) for c in range(14, 36)]           # E-W promenade: DiMare front -> UMass Memorial door
+    paths += [(24, r) for r in range(19, 31)]           # N-S spine: MSB door -> promenade -> south sidewalk
+    paths += [(c, 29) for c in range(7, 15)]            # SW connector across the Lazare/DiMare fronts
+    paths += [(35, 29), (14, 29), (7, 29)]              # final steps onto the surrounding doors
+    paths += [(23, 27), (25, 27), (23, 28), (25, 28)]   # small paved plaza where spine meets promenade
+    for (c, r) in paths:
+        if 0 <= r < ROWS and 0 <= c < COLS and g[r][c] in (".", "q", "Q"): g[r][c] = "s"
     return ["".join(row) for row in g]
 
 terrain = build_terrain()
@@ -85,7 +101,7 @@ for bid, b in BLD.items():
 
 # labels object matches scenes.js Overworld: greens/lots [x,y,name], streets [x,y,angle,name], signs [x,y,text]
 labels = {
-    "greens": [[WATER[1]-1, 40, "Lake Quinsigamond"]],
+    "greens": [[WATER[1]-1, 40, "Lake Quinsigamond"], [24, 26, "The Quad"]],
     "lots": [],
     "streets": [
         [PLANTATION, 6, -90, "Plantation St"],
@@ -101,6 +117,9 @@ data = {
     "COLS": COLS, "ROWS": ROWS,
     "buildings": buildings, "terrain": terrain,
     "skybridges": SKY, "spawn": SPAWN, "helipad": HELIPAD, "labels": labels,
+    "quad": {"benches": [[20, 27], [28, 27], [21, 23], [27, 22], [22, 25]],
+             "lamps": [[24, 22], [19, 28], [30, 28], [24, 20]],
+             "trees": [[19, 22], [28, 21], [21, 25], [27, 26], [25, 23]]},
     "roads": {"north": NORTH_ROAD, "south": SOUTH_ROAD, "route9": ROUTE9,
               "plantation": PLANTATION, "lakeAve": LAKE_AVE, "water": WATER, "width": ROAD_W},
 }

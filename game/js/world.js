@@ -12,7 +12,7 @@
   const D = (typeof module !== "undefined" && module.exports) ? require("./world_data.js") : root.IRWorldData;
   const TILE = 32, COLS = D.COLS, ROWS = D.ROWS, WALL = 2;
   const WPX = COLS * TILE, HPX = ROWS * TILE;
-  const T = { GRASS: 0, GRASS2: 1, ROAD: 2, DASH_H: 3, DASH_V: 4, SIDE: 5, PARK: 6, WATER: 7 };
+  const T = { GRASS: 0, GRASS2: 1, ROAD: 2, DASH_H: 3, DASH_V: 4, SIDE: 5, PARK: 6, WATER: 7, QUAD: 8, QUAD2: 9 };
   const SKY = D.skybridges || (D.skybridge ? [D.skybridge] : []);
   const hx = (s) => (typeof s === "string" ? parseInt(s.replace("#", ""), 16) : s);
 
@@ -122,6 +122,8 @@
       if (ch === "s") return T.SIDE;
       if (ch === "p") return T.PARK;
       if (ch === "w") return T.WATER;
+      if (ch === "q") return T.QUAD;      // mowed-lawn stripes (The Quad)
+      if (ch === "Q") return T.QUAD2;
       return ((c * 7 + r2 * 13 + ((c * c + r2 * 3) % 5)) % 7) < 3 ? T.GRASS2 : T.GRASS;
     }));
     // solids: building roofs/walls + open water (bridges stay walkable)
@@ -247,7 +249,15 @@
     roadTile(192); g.fillStyle(0xcfd3d8, 0.85); g.fillRect(192, 2, 2, 13);
     g.fillStyle(0x24486b, 1); g.fillRect(224, 0, 32, 32); speck(224, 8, [0x1f3f5e, 0x2b537a]);
     g.fillStyle(0x35638f, 0.9); g.fillRect(224 + 4, 8, 8, 1); g.fillRect(224 + 18, 20, 9, 1); g.fillRect(224 + 10, 27, 6, 1);
-    g.generateTexture("tileset", 256, 32); g.destroy();
+    // The Quad: alternating mowed-lawn stripes (brighter, tended turf)
+    const lawnTile = (ox, base) => {
+      g.fillStyle(base, 1); g.fillRect(ox, 0, 32, 32);
+      g.fillStyle(shade(base, 1.08), 0.65); g.fillRect(ox, 0, 32, 1);
+      speck(ox, 10, [shade(base, 0.92), shade(base, 1.1)]);
+    };
+    lawnTile(256, 0x5f9448);
+    lawnTile(288, 0x54873f);
+    g.generateTexture("tileset", 320, 32); g.destroy();
   }
 
   function paintRoof(scene, b) {
@@ -376,6 +386,20 @@
     g.fillStyle(0x14181e, 1); g.fillRect(1, 6, 3, 6); g.fillRect(14, 6, 3, 6); g.fillRect(1, 22, 3, 6); g.fillRect(14, 22, 3, 6);
     g.fillStyle(0xfff2b0, 1); g.fillRect(4, 29, 3, 2); g.fillRect(11, 29, 3, 2);
     g.generateTexture("t_car_v", 18, 34); g.destroy();
+    // quad furniture: park bench + lamp post (photo-matched paths/benches/lamps)
+    g = scene.make.graphics({ add: false });
+    g.fillStyle(0x000000, 0.25); g.fillEllipse(16, 15, 28, 4);
+    g.fillStyle(0x4a3a28, 1); g.fillRect(3, 10, 3, 6); g.fillRect(26, 10, 3, 6);
+    g.fillStyle(0x8a6a44, 1); g.fillRect(1, 7, 30, 4); g.fillStyle(0x9d7c52, 1).fillRect(1, 2, 30, 3);
+    g.fillStyle(0x6d5334, 1); g.fillRect(1, 11, 30, 2);
+    g.generateTexture("t_bench", 32, 17); g.destroy();
+    g = scene.make.graphics({ add: false });
+    g.fillStyle(0x000000, 0.25); g.fillEllipse(6, 38, 10, 3);
+    g.fillStyle(0x2b303c, 1); g.fillRect(5, 6, 3, 32);
+    g.fillStyle(0x39404d, 1); g.fillRect(3, 36, 7, 3);
+    g.fillStyle(0xf2e2a8, 1); g.fillCircle(6, 5, 4);
+    g.fillStyle(0xf2e2a8, 0.25); g.fillCircle(6, 5, 7);
+    g.generateTexture("t_lamp", 13, 40); g.destroy();
     // skybridges are drawn as graphics rects in drawBuildings (variable size/orientation)
   }
 
@@ -555,6 +579,25 @@
       g.fillStyle(0x9fd8e8, 1); g.beginPath(); g.moveTo(17, 18); g.lineTo(10, 6); g.lineTo(24, 6); g.closePath(); g.fillPath(); // sector image
       g.fillStyle(0x8b97a7, 1); g.fillRect(26, 24, 3, 12);       // probe cable
     });
+    tex("t_ivpole", 16, 44, (g) => {           // clutter: IV pole w/ hanging bag
+      g.fillStyle(0x000000, 0.22); g.fillEllipse(8, 41, 12, 4);
+      g.fillStyle(0x8b97a7, 1); g.fillRect(7, 4, 2, 36); g.fillRect(2, 4, 12, 2);
+      g.fillStyle(0xcfe4f2, 1); g.fillRect(2, 6, 6, 9); g.fillStyle(0x9fc4e0, 1); g.fillRect(2, 12, 6, 3);
+      g.fillStyle(0x4a5262, 1); g.fillRect(4, 38, 8, 3);
+    });
+    tex("t_scrub", 18, 22, (g) => {            // clutter: wall scrub/sanitizer dispenser
+      g.fillStyle(0xe8eaee, 1); g.fillRect(2, 2, 14, 16);
+      g.fillStyle(0x6fb3a4, 1); g.fillRect(2, 2, 14, 4);
+      g.fillStyle(0x9aa4b0, 1); g.fillRect(6, 18, 6, 3);
+      g.fillStyle(0x2b303c, 1); g.fillRect(4, 8, 10, 2);
+    });
+    tex("t_cart", 30, 34, (g) => {             // clutter: charting/computer cart (WOW)
+      g.fillStyle(0x000000, 0.22); g.fillEllipse(15, 31, 24, 5);
+      g.fillStyle(0x4a5262, 1); g.fillRect(13, 12, 4, 16);
+      g.fillStyle(0x39404d, 1); g.fillRect(4, 28, 22, 3);
+      g.fillStyle(0xdfe3e8, 1); g.fillRect(4, 8, 22, 5);
+      g.fillStyle(0x2b303c, 1); g.fillRect(7, 0, 16, 10); g.fillStyle(0x69d2e7, 1); g.fillRect(9, 2, 12, 6);
+    });
     tex("t_carm", 56, 62, (g) => {
       g.fillStyle(0x000000, 0.22); g.fillEllipse(28, 57, 40, 7);
       g.fillStyle(0x39404d, 1); g.fillRect(18, 42, 22, 14);
@@ -592,7 +635,7 @@
 
   const api = {
     TILE, COLS, ROWS, WALL, WPX, HPX, T,
-    buildings, byId, doorFor, buildGrid, treeList, validate, geo,
+    buildings, byId, doorFor, buildGrid, treeList, validate, geo, quad: D.quad || null,
     labels: D.labels, helipad: D.helipad, skybridges: SKY, skybridge: SKY[0] || null,
     ensureTextures, drawBuildings, mapSvgInner, paintInterior, shade, mulberry32,
     spawnDefault: { x: (D.spawn.x + 0.5) * TILE, y: (D.spawn.y + 0.5) * TILE },

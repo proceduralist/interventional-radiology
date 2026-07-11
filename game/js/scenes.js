@@ -31,9 +31,16 @@
   }
   function updatePortals(scene) {
     if (scene.busy) { scene._hint.setVisible(false); return; }
-    let near = null;
+    // pick the NEAREST portal in range (first-match let large zones shadow small
+    // ones — e.g. the library stairs hiding behind "Browse the stacks")
+    let near = null, best = Infinity;
     for (const p of scene._portals) {
-      if (Math.abs(scene.player.x - p.x) < p.w / 2 + 22 && Math.abs(scene.player.y - p.y) < p.h / 2 + 22) { near = p; break; }
+      const dx = Math.abs(scene.player.x - p.x), dy = Math.abs(scene.player.y - p.y);
+      const rx = p.w / 2 + 22, ry = p.h / 2 + 22;
+      if (dx < rx && dy < ry) {
+        const d = dx / rx + dy / ry;
+        if (d < best) { best = d; near = p; }
+      }
     }
     scene._near = near;
     if (near) scene._hint.setText("▸ " + near.label + "   [E]").setPosition(scene.player.x - 40, scene.player.y - 52).setVisible(true);
@@ -56,10 +63,18 @@
     return scene.add.text(x, y, txt, Object.assign({ fontFamily: "monospace", fontSize: (size || 12) + "px", color: TEXT, align: "center" }, opts || {})).setOrigin(0.5).setDepth(5);
   }
   function spawnPlayer(scene, x, y) {
-    scene.player = scene.physics.add.image(x, y, "t_player");
-    scene.player.body.setSize(14, 9).setOffset(3, 18); // feet-only body → walk "behind" things
+    scene.player = scene.physics.add.image(x, y, "t_player").setScale(2); // characters are 2× (Ryan)
+    scene.player.body.setSize(14, 9).setOffset(3, 18); // feet-only body → walk "behind" things (scales with sprite)
     scene.player.setCollideWorldBounds(true);
     stdControls(scene);
+  }
+  // NPC ↔ world physics: every patrolling NPC collides with the scene's solids
+  // and blocks/is blocked by the player (no ghosting through desks or people).
+  function wireNpcPhysics(scene, solids) {
+    (scene._npcs || []).forEach(n => {
+      scene.physics.add.collider(n, solids);
+      if (scene.player) scene.physics.add.collider(scene.player, n);
+    });
   }
   function hud(scene, lines) {
     return scene.add.text(10, 8, lines, { fontFamily: "monospace", fontSize: "12px", color: TEXT, backgroundColor: "#0e1420cc", padding: { x: 8, y: 5 } })
@@ -74,7 +89,7 @@
   // ======================================================================
   const NPC_CHAR = { attending: 0, doctor: 1, resident: 2, residentF: 3, nurse: 4, senior: 5, surgeon: 6, visitor: 7 };
   const NPC_DIR = { d: 0, l: 1, r: 2, u: 3 };
-  const NPC_SCALE = 0.3;
+  const NPC_SCALE = 0.6;   // characters are 2× (Ryan)
   const rndChar = () => (Math.random() * 8) | 0;
   const npcCharOf = (role) => (typeof role === "number" ? role : (NPC_CHAR[role] != null ? NPC_CHAR[role] : 7));
   const NPC_FALLBACK = { attending: "t_attending", doctor: "t_attending", surgeon: "t_tech", resident: "t_tech", residentF: "t_tech", nurse: "t_nurse", senior: "t_nurse", visitor: "t_tech" };
@@ -88,38 +103,64 @@
         frames: [1, 0, 1, 2].map(f => ({ key: "npcsheet", frame: npcFrame(c, dir, f) })) });
     });
   }
-  function npcIdle(scene, x, y, role, dir) {
+  function npcIdle(scene, x, y, role, dir, solids) {
     ensureNpcAnims(scene);
+    let s;
     if (!scene.textures.exists("npcsheet")) {
       const key = NPC_FALLBACK[role] || "t_tech";
-      return scene.add.image(x, y, scene.textures.exists(key) ? key : "t_player").setOrigin(0.5, 1).setDepth(y);
+      s = scene.add.image(x, y, scene.textures.exists(key) ? key : "t_player").setScale(2).setOrigin(0.5, 1).setDepth(y);
+    } else {
+      s = scene.add.sprite(x, y, "npcsheet", npcFrame(npcCharOf(role), dir || "d", 1))
+        .setScale(NPC_SCALE).setOrigin(0.5, 0.96).setDepth(y);
     }
-    return scene.add.sprite(x, y, "npcsheet", npcFrame(npcCharOf(role), dir || "d", 1))
-      .setScale(NPC_SCALE).setOrigin(0.5, 0.96).setDepth(y);
+    if (solids) { const z = scene.add.zone(x, y - 6, 22, 12); scene.physics.add.existing(z, true); solids.add(z); }
+    return s;
   }
   // animated in place — speakers mid-lecture, baristas pulling shots, working staff
-  function npcTalker(scene, x, y, role, dir) {
-    const s = npcIdle(scene, x, y, role, dir);
+  function npcTalker(scene, x, y, role, dir, solids) {
+    const s = npcIdle(scene, x, y, role, dir, solids);
     if (s.play) s.play("npc" + npcCharOf(role) + "-talk-" + (dir || "d"));
     return s;
   }
+  // Patrolling NPCs are PHYSICS bodies: velocity-driven between two waypoints,
+  // reversing on arrival OR when blocked by furniture/walls/the player.
   function npcPatrol(scene, x, y, role, dx, dy, dur) {
-    const s = npcIdle(scene, x, y, role, "d");
+    ensureNpcAnims(scene);
     const c = npcCharOf(role);
-    const fwd = Math.abs(dx) >= Math.abs(dy) ? (dx >= 0 ? "r" : "l") : (dy >= 0 ? "d" : "u");
-    const back = { r: "l", l: "r", d: "u", u: "d" }[fwd];
-    if (s.play) s.play("npc" + c + "-" + fwd);
-    scene.tweens.add({ targets: s, x: x + dx, y: y + dy, duration: dur, yoyo: true, repeat: -1,
-      ease: "Sine.easeInOut", delay: (x * 13) % 900,
-      onYoyo: () => { if (s.play) s.play("npc" + c + "-" + back); },
-      onRepeat: () => { if (s.play) s.play("npc" + c + "-" + fwd); },
-      onUpdate: () => s.setDepth(s.y) });
+    let s;
+    if (scene.textures.exists("npcsheet")) {
+      s = scene.physics.add.sprite(x, y, "npcsheet", npcFrame(c, "d", 1)).setScale(NPC_SCALE).setOrigin(0.5, 0.96);
+      s.body.setSize(50, 22).setOffset(15, 93);            // feet box (frame units; scales ×0.6 → ~30×13)
+    } else {
+      s = scene.physics.add.image(x, y, NPC_FALLBACK[role] || "t_player").setScale(2).setOrigin(0.5, 1);
+      s.body.setSize(14, 9).setOffset(3, 18);
+    }
+    s.body.pushable = false;                                // the player can't shove staff around
+    const horiz = Math.abs(dx) >= Math.abs(dy);
+    const lo = horiz ? Math.min(x, x + dx) : Math.min(y, y + dy);
+    const hi = horiz ? Math.max(x, x + dx) : Math.max(y, y + dy);
+    const speed = Math.max(24, (hi - lo) / (dur / 2000));   // px/s for one leg ≈ dur/2
+    let dir = (horiz ? dx : dy) >= 0 ? 1 : -1;
+    const face = () => { if (s.play) s.play("npc" + c + "-" + (horiz ? (dir > 0 ? "r" : "l") : (dir > 0 ? "d" : "u"))); };
+    face();
+    scene.time.addEvent({ delay: 150, loop: true, callback: () => {
+      if (!s.body) return;
+      const pos = horiz ? s.x : s.y;
+      const blocked = horiz
+        ? (dir > 0 ? (s.body.blocked.right || s.body.touching.right) : (s.body.blocked.left || s.body.touching.left))
+        : (dir > 0 ? (s.body.blocked.down || s.body.touching.down) : (s.body.blocked.up || s.body.touching.up));
+      if (pos >= hi || pos <= lo || blocked) { dir = -dir; face(); }
+      s.body.setVelocity(horiz ? speed * dir : 0, horiz ? 0 : speed * dir);
+      s.setDepth(s.y);
+    } });
+    (scene._npcs = scene._npcs || []).push(s);
     return s;
   }
   // chair drawn over the sprite's legs ≈ seated (audience, students, waiting rooms)
-  function npcSeated(scene, x, y, role, dir) {
+  function npcSeated(scene, x, y, role, dir, solids) {
     const s = npcIdle(scene, x, y, role, dir || "u");
-    scene.add.image(x, y + 2, "t_chair").setOrigin(0.5, 1).setDepth(y + 3);
+    scene.add.image(x, y + 2, "t_chair").setScale(1.6).setOrigin(0.5, 1).setDepth(y + 3); // chair sized to the 2× cast
+    if (solids) { const z = scene.add.zone(x, y - 6, 26, 18); scene.physics.add.existing(z, true); solids.add(z); }
     return s;
   }
 
@@ -130,29 +171,51 @@
   const WALL = 12, FACE = 44, DOORW = 46;
   function roomKit(scene, solids) {
     const solid = (x, y, w, h) => { const z = scene.add.zone(x, y, w, h); scene.physics.add.existing(z, true); solids.add(z); };
-    const staff = (x, y, role, dir) => { const s = npcIdle(scene, x, y, role, dir); solid(x, y - 5, 14, 8); return s; };
-    const procRoom = (x0, y0, w, h, name, accent) => {
+    const staff = (x, y, role, dir) => { const s = npcIdle(scene, x, y, role, dir); solid(x, y - 6, 22, 12); return s; };
+    // A walled room in strict 3/4 perspective (project spec): lino floor, north
+    // wall face + accent stripe, grid-aligned solid walls, and ONE door — south
+    // by default, or in the east/west wall (opts.door: "s"|"e"|"w", opts.doorCY)
+    // so rooms attach laterally and the camera walks between them.
+    const procRoom = (x0, y0, w, h, name, accent, opts) => {
+      opts = opts || {};
+      const side = opts.door || "s";
       const doorX = x0 + w / 2;
+      const doorCY = opts.doorCY != null ? opts.doorCY : y0 + FACE + (h - FACE) / 2;
       scene.add.tileSprite(x0, y0, w, h, "t_lino").setOrigin(0).setDepth(1);
       scene.add.tileSprite(x0, y0, w, FACE, "t_iwall").setOrigin(0).setDepth(2);
       const gfx = scene.add.graphics().setDepth(3);
       gfx.fillStyle(accent, 1); gfx.fillRect(x0, y0 + FACE - 6, w, 3);
       gfx.fillStyle(0x1c2331, 1);
-      gfx.fillRect(x0 - WALL, y0 - WALL, w + 2 * WALL, WALL);
-      gfx.fillRect(x0 - WALL, y0 - WALL, WALL, h + 2 * WALL);
-      gfx.fillRect(x0 + w, y0 - WALL, WALL, h + 2 * WALL);
-      const gapL = doorX - DOORW / 2, gapR = doorX + DOORW / 2;
-      gfx.fillRect(x0 - WALL, y0 + h, gapL - (x0 - WALL), WALL);
-      gfx.fillRect(gapR, y0 + h, (x0 + w + WALL) - gapR, WALL);
-      gfx.fillStyle(0x8f959d, 1); gfx.fillRect(gapL, y0 + h, DOORW, WALL);
-      gfx.fillStyle(0x2b303c, 1); gfx.fillRect(gapL - 3, y0 + h, 3, WALL); gfx.fillRect(gapR, y0 + h, 3, WALL);
-      label(scene, doorX, y0 + h + WALL + 9, name, 10).setDepth(4);
-      solid(x0 + w / 2, y0 + (FACE - WALL) / 2, w, FACE + WALL);
-      solid(x0 - WALL / 2, y0 + h / 2, WALL, h + 2 * WALL);
-      solid(x0 + w + WALL / 2, y0 + h / 2, WALL, h + 2 * WALL);
-      solid((x0 - WALL + gapL) / 2, y0 + h + WALL / 2, gapL - (x0 - WALL), WALL);
-      solid((gapR + x0 + w + WALL) / 2, y0 + h + WALL / 2, (x0 + w + WALL) - gapR, WALL);
-      return { doorX };
+      gfx.fillRect(x0 - WALL, y0 - WALL, w + 2 * WALL, WALL);          // top cap
+      solid(x0 + w / 2, y0 + (FACE - WALL) / 2, w, FACE + WALL);       // north wall incl. face
+      const vWall = (wx) => { gfx.fillRect(wx, y0 - WALL, WALL, h + 2 * WALL); solid(wx + WALL / 2, y0 + h / 2, WALL, h + 2 * WALL); };
+      const vWallGap = (wx) => {                                        // side wall with a door gap
+        const gT = doorCY - DOORW / 2, gB = doorCY + DOORW / 2;
+        gfx.fillRect(wx, y0 - WALL, WALL, gT - (y0 - WALL));
+        gfx.fillRect(wx, gB, WALL, (y0 + h + WALL) - gB);
+        gfx.fillStyle(0x8f959d, 1); gfx.fillRect(wx, gT, WALL, DOORW);
+        gfx.fillStyle(0x2b303c, 1); gfx.fillRect(wx, gT - 3, WALL, 3); gfx.fillRect(wx, gB, WALL, 3);
+        gfx.fillStyle(0x1c2331, 1);
+        solid(wx + WALL / 2, (y0 - WALL + gT) / 2, WALL, gT - (y0 - WALL));
+        solid(wx + WALL / 2, (gB + y0 + h + WALL) / 2, WALL, (y0 + h + WALL) - gB);
+      };
+      if (side === "w") vWallGap(x0 - WALL); else vWall(x0 - WALL);
+      if (side === "e") vWallGap(x0 + w); else vWall(x0 + w);
+      if (side === "s") {
+        const gapL = doorX - DOORW / 2, gapR = doorX + DOORW / 2;
+        gfx.fillRect(x0 - WALL, y0 + h, gapL - (x0 - WALL), WALL);
+        gfx.fillRect(gapR, y0 + h, (x0 + w + WALL) - gapR, WALL);
+        gfx.fillStyle(0x8f959d, 1); gfx.fillRect(gapL, y0 + h, DOORW, WALL);
+        gfx.fillStyle(0x2b303c, 1); gfx.fillRect(gapL - 3, y0 + h, 3, WALL); gfx.fillRect(gapR, y0 + h, 3, WALL);
+        solid((x0 - WALL + gapL) / 2, y0 + h + WALL / 2, gapL - (x0 - WALL), WALL);
+        solid((gapR + x0 + w + WALL) / 2, y0 + h + WALL / 2, (x0 + w + WALL) - gapR, WALL);
+        label(scene, doorX, y0 + h + WALL + 9, name, 10).setDepth(4);
+      } else {
+        gfx.fillRect(x0 - WALL, y0 + h, w + 2 * WALL, WALL);
+        solid(x0 + w / 2, y0 + h + WALL / 2, w + 2 * WALL, WALL);
+        label(scene, doorX, y0 - WALL - 9, name, 10).setDepth(4);
+      }
+      return { doorX, doorCY };
     };
     return { solid, staff, procRoom };
   }
@@ -285,12 +348,12 @@
           if (horiz) {
             const y = center * TILE + TILE / 2 + (dir > 0 ? lane : -lane);
             const c = this.add.image(dir > 0 ? -50 : W.WPX + 50, y, "t_car_h")
-              .setTint(tint).setFlipX(dir < 0).setDepth(y);
+              .setScale(2).setTint(tint).setFlipX(dir < 0).setDepth(y);
             this.tweens.add({ targets: c, x: dir > 0 ? W.WPX + 50 : -50, duration: dur, repeat: -1, delay: Math.random() * dur });
           } else {
             const x = center * TILE + TILE / 2 + (dir > 0 ? -lane : lane);
             const c = this.add.image(x, dir > 0 ? -60 : W.HPX + 60, "t_car_v")
-              .setTint(tint).setFlipY(dir < 0).setDepth(0);
+              .setScale(2).setTint(tint).setFlipY(dir < 0).setDepth(0);
             this.tweens.add({ targets: c, y: dir > 0 ? W.HPX + 60 : -60, duration: dur * 1.15, repeat: -1,
               delay: Math.random() * dur, onUpdate: () => c.setDepth(c.y) });
           }
@@ -299,13 +362,35 @@
         [RD.plantation, RD.lakeAve].forEach(cx => [1, -1].forEach(dir => car(false, cx, dir)));
       }
 
-      // --- trees (Y-sorted, trunk-only collision)
+      // --- trees (Y-sorted, trunk-only collision). Scaled 1.5× so a full-grown
+      //     campus tree still towers over the 2× player/NPC cast.
       W.treeList().forEach(t => {
         const tx = (t.c + 0.5) * TILE, ty = (t.r + 1) * TILE;
-        this.add.image(tx, ty, "tree" + t.v).setOrigin(0.5, 1).setDepth(ty);
-        const trunk = this.add.zone(tx, ty - 6, 14, 10);
+        this.add.image(tx, ty, "tree" + t.v).setScale(1.5).setOrigin(0.5, 1).setDepth(ty);
+        const trunk = this.add.zone(tx, ty - 8, 18, 12);
         this.physics.add.existing(trunk, true); solids.add(trunk);
       });
+
+      // --- The Quad (photo-matched): benches, lamp posts, young trees on the lawn
+      const QD = W.quad;
+      if (QD) {
+        const zone = (x, y, w2, h2) => { const z = this.add.zone(x, y, w2, h2); this.physics.add.existing(z, true); solids.add(z); };
+        (QD.benches || []).forEach(([c, r]) => {
+          const bx = c * TILE + TILE / 2, by = r * TILE + TILE - 4;
+          this.add.image(bx, by, "t_bench").setScale(2).setOrigin(0.5, 1).setDepth(by); // sized to the 2× cast
+          zone(bx, by - 8, 48, 10);
+        });
+        (QD.lamps || []).forEach(([c, r]) => {
+          const lx = c * TILE + TILE / 2, ly = r * TILE + TILE - 4;
+          this.add.image(lx, ly, "t_lamp").setScale(2).setOrigin(0.5, 1).setDepth(ly);   // lamp posts stand taller than people
+          zone(lx, ly - 4, 10, 8);
+        });
+        (QD.trees || []).forEach(([c, r], i) => {
+          const tx = c * TILE + TILE / 2, ty = r * TILE + TILE - 2;
+          this.add.image(tx, ty, "tree" + (i % 2)).setScale(1.5).setOrigin(0.5, 1).setDepth(ty); // match the campus trees
+          zone(tx, ty - 8, 16, 10);
+        });
+      }
 
       // --- player + camera follow across the whole campus
       const sp = (data && data.spawn) || S.lastDoor || W.spawnDefault;
@@ -451,14 +536,16 @@
       const libraryPoi = pois.find(p => /^library/i.test(p.label));
       const roomPois = pois.filter(p => p !== corridorPoi && p !== libraryPoi);
 
+      // Themed rooms tile the hall EDGE-TO-EDGE as adjacent rooms sharing
+      // partition walls (no gaps, no moat) and attach to the north wall; each
+      // opens south into the shared lobby hall — the hub. No nested boxes.
       const n = roomPois.length;
-      const RH2 = 168, RY = y0 + 100;
-      const RW2 = n ? Math.min(240, Math.floor((rw - 60 - (n - 1) * 30) / n)) : 0;
-      const total = n * RW2 + (n - 1) * 30;
-      const startX = x0 + (rw - total) / 2;
+      const RH2 = 210, RY = y0 + 82;
+      const RW2 = n ? Math.floor((rw - 24) / n) : 0;
+      const startX = x0 + 12;
 
       roomPois.forEach((p, i) => {
-        const rx = startX + i * (RW2 + 30);
+        const rx = startX + i * RW2;
         const theme = poiTheme(p);
         K.procRoom(rx, RY, RW2, RH2, p.label.length > 20 ? p.label.slice(0, 19) + "…" : p.label, THEME_ACCENT[theme]);
         const cx = rx + RW2 / 2, top = RY + FACE;
@@ -754,6 +841,28 @@
       const staffNpc = (x, y, role, dir) => K.staff(x, y, role, dir);
       const wanderNpc = (x, y, role, dx, dy, dur) => npcPatrol(this, x, y, role, dx, dy, dur);
 
+      // --- No-nesting layout (project spec: NEVER a room boxed inside another
+      //     room). A floor's outer shell IS the room; where a floor holds several
+      //     distinct rooms they are ADJACENT nodes sharing a single partition
+      //     wall with a doorway (same-level = seamless). suiteDress names a slice
+      //     of this floor; partition drops the shared wall between two of them.
+      const suiteDress = (xL, xR, accent, name) => {
+        const g = this.add.graphics().setDepth(3);
+        g.fillStyle(accent, 1); g.fillRect(xL, 224, xR - xL, 3);          // accent stripe on the north wall base
+        label(this, (xL + xR) / 2, 214, name, 10, { backgroundColor: "#0e1420cc", padding: { x: 5, y: 2 } }).setDepth(4);
+      };
+      const partition = (x, doorCY) => {
+        const yTop = 232, yBottom = 590, gT = doorCY - DOORW / 2, gB = doorCY + DOORW / 2;
+        const g = this.add.graphics().setDepth(3);
+        g.fillStyle(0x1c2331, 1);
+        g.fillRect(x - WALL / 2, yTop, WALL, gT - yTop);
+        g.fillRect(x - WALL / 2, gB, WALL, yBottom - gB);
+        g.fillStyle(0x8f959d, 1); g.fillRect(x - WALL / 2, gT, WALL, DOORW);            // doorway threshold
+        g.fillStyle(0x2b303c, 1); g.fillRect(x - WALL / 2, gT - 3, WALL, 3); g.fillRect(x - WALL / 2, gB, WALL, 3);
+        solid(x, (yTop + gT) / 2, WALL, gT - yTop);
+        solid(x, (gB + yBottom) / 2, WALL, yBottom - gB);
+      };
+
       if (floor === "1") {
         this.add.image(416, 300, "t_desk").setOrigin(0).setDepth(362); solid(480, 340, 128, 42);
         label(this, 480, 292, "Reception", 10).setAlpha(0.7).setDepth(4);
@@ -821,7 +930,9 @@
         const loc = PROC_FLOORS[floor];
         const X0 = 330, RW = 300, Y0 = 312, RH = 128;
         const ACCENT = { ir_suite: 0x5a6fbf, ct_suite: 0x6f8f5a, us_room: 0x4f7a9f };
-        procRoom(X0, Y0, RW, RH, ROOM_LABEL[loc].toUpperCase(), ACCENT[loc]);
+        // The whole floor IS the suite — one room, no nested box. The north wall
+        // carries the accent + name; the equipment fills the open floor.
+        suiteDress(130, 830, ACCENT[loc], ROOM_LABEL[loc].toUpperCase());
         let tableAt;
         if (loc === "ir_suite") {
           this.add.image(480, Y0 + 20, "t_carm").setOrigin(0.5, 0).setDepth(Y0 + 78); solid(480, Y0 + 62, 44, 26);
@@ -880,8 +991,10 @@
             WardFlow.operate(this, loc, t);
           } });
       } else if (floor === "6") {
-        // ---- Staff lounge (west half, attendings milling about) + call rooms --
-        procRoom(140, 312, 310, 190, "STAFF LOUNGE", 0x9a8550);
+        // ---- Staff lounge + three call rooms: a row of ADJACENT rooms sharing
+        //      partition walls with doorways (no nested boxes). ------------------
+        suiteDress(130, 470, 0x9a8550, "STAFF LOUNGE");
+        partition(470, 520); partition(593, 520); partition(716, 520);
         const lng = this.add.graphics().setDepth(312 + 96);
         lng.fillStyle(0x6a5530, 1).fillRect(160, 376, 74, 24);                     // couch seat
         lng.fillStyle(0x8a744a, 1).fillRect(160, 366, 74, 12);                     // couch back
@@ -900,11 +1013,13 @@
         portals.push({ x: 295, y: 430, w: 250, h: 130, label: "Staff lounge — attending's pearls", onEnter: () => openOverlay((close) =>
             root.IRUI.Lounge.show(S.bundle.procedure, { onClose: close })) });
 
-        // call rooms (east half): two post-call residents asleep + YOUR empty room
+        // call rooms (east): two post-call residents asleep + YOUR empty room —
+        // each an adjacent room in the partitioned row above.
         const CALLX = [495, 607, 719], CW = 98, CY0 = 312, CH = 120;
+        const SEC = [[470, 593], [593, 716], [716, 830]];
         CALLX.forEach((x0, i) => {
           const mine = i === CALLX.length - 1;
-          procRoom(x0, CY0, CW, CH, mine ? "YOUR CALL ROOM" : "CALL ROOM " + (i + 1), 0x7a6a9f);
+          suiteDress(SEC[i][0], SEC[i][1], 0x7a6a9f, mine ? "YOUR CALL ROOM" : "CALL ROOM " + (i + 1));
           const bx = x0 + 30;
           this.add.image(bx, CY0 + 52, "t_bed").setOrigin(0.5, 0).setDepth(CY0 + 108); solid(bx, CY0 + 82, 36, 40);
           if (!mine) {
@@ -927,8 +1042,11 @@
         pipes.fillStyle(0x4a5262, 1).fillRect(120, 158, 720, 8).fillRect(120, 172, 720, 5);
         pipes.fillStyle(0x39404d, 1).fillRect(300, 150, 10, 82).fillRect(600, 150, 10, 82);
 
-        // Simulation lab: flow bench, practice torso, monitors, sim tech
-        procRoom(150, 312, 300, 150, "SIMULATION LAB", 0x9f8a4f);
+        // Sim Lab (west) and Procurement (east) are ADJACENT rooms sharing one
+        // partition wall + doorway — not boxes floating in the basement.
+        suiteDress(130, 476, 0x9f8a4f, "SIMULATION LAB");
+        suiteDress(476, 830, 0x4f8a9f, "PROCUREMENT / SUPPLY");
+        partition(476, 520);
         const bench = this.add.graphics().setDepth(312 + 108);
         bench.fillStyle(0x6a5530, 1).fillRect(172, 380, 118, 20); bench.fillStyle(0x8a744a, 1).fillRect(172, 376, 118, 6);
         solid(231, 390, 118, 22);                                                  // flow bench
@@ -942,7 +1060,6 @@
             root.IRUI.SimLab.show({ save: S.save, devices: S.bundle.devices, config: S.bundle.config, configMeta: S.bundle.configMeta }, { onClose: close })) });
 
         // Procurement: shelving racks of stock, order desk, supply clerk
-        procRoom(520, 312, 290, 150, "PROCUREMENT / SUPPLY", 0x4f8a9f);
         const rack = this.add.graphics().setDepth(312 + 92);
         [364, 396].forEach(ry => {
           rack.fillStyle(0x39404d, 1).fillRect(544, ry + 12, 150, 6);              // shelf
@@ -959,7 +1076,9 @@
         flavor(480, 545, "Steam pipes", "Something hisses rhythmically. Facilities says it's \"supposed to do that.\"");
       }
 
-      spawnPlayer(this, 480, (floor === "1" || floor === "2") ? 420 : 520); // room floors: spawn in the south corridor
+      // spawn clear of any central partition wall (B/6 divide the floor at ~x480)
+      const spawnX = (floor === "B" || floor === "6") ? 300 : 480;
+      spawnPlayer(this, spawnX, (floor === "1" || floor === "2") ? 420 : 520);
       this.physics.world.setBounds(130, 232, 700, 358);
       this.physics.add.collider(this.player, solids);
       refreshHud();
