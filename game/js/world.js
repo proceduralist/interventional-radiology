@@ -170,9 +170,13 @@
     const rnd = mulberry32(20260703), out = [];
     let tries = 0;
     const grassy = (r2, c) => grid[r2][c] === T.GRASS || grid[r2][c] === T.GRASS2;
+    // keep the walkable pathways UNDER the skybridges clear of trees (Ryan) — the
+    // margin covers the rendered span, which reaches a little into each building.
+    const underBridge = (r2, c) => SKY.some(sb =>
+      c >= sb.x - 2 && c <= sb.x + (sb.w || 1) + 1 && r2 >= sb.y - 3 && r2 <= sb.y + (sb.h || 1) + 2);
     while (out.length < 110 && tries++ < 2600) {
       const c = 1 + Math.floor(rnd() * (COLS - 2)), r2 = 1 + Math.floor(rnd() * (ROWS - 2));
-      let ok = true;
+      let ok = !underBridge(r2, c);
       for (let dr = -1; dr <= 1 && ok; dr++) for (let dc = -1; dc <= 1 && ok; dc++)
         if (solid[r2 + dr][c + dc] || !grassy(r2 + dr, c + dc)) ok = false;
       if (ok && !out.some(t => Math.abs(t.c - c) + Math.abs(t.r - r2) < 3)) out.push({ c, r: r2, v: rnd() < 0.5 ? 0 : 1 });
@@ -424,6 +428,43 @@
     // skybridges are drawn as graphics rects in drawBuildings (variable size/orientation)
   }
 
+  // A realistic enclosed glass skybridge (steel frame, glazing + mullions, roof
+  // cap with overhang, support pylons, ground shadow). horiz = spans E–W.
+  function drawSkybridge(sg, shadows, x, y, w, h, horiz) {
+    const dark = 0x232c40, steel = 0x525c78, steelHi = 0x707c9e, roof = 0x7d89ad, glass = 0x9fc4e0, glassHi = 0xd6ebf7, mull = 0x39415c;
+    if (horiz) {
+      shadows.fillStyle(0x000000, 0.20).fillRect(x + 6, y + h - 1, w - 12, 9);          // ground shadow
+      sg.fillStyle(dark, 1);
+      [0.30, 0.70].forEach(f => sg.fillRect(x + w * f - 2, y + h - 3, 5, 14));            // support pylons
+      sg.fillRect(x, y + h - 7, w, 8);                                                   // deck underside
+      sg.fillStyle(steel, 1).fillRect(x, y + 4, w, h - 10);                              // steel body
+      const gy = y + 7, gh = Math.max(4, h - 17);
+      for (let px = x + 3; px + 7 <= x + w; px += 10) {                                  // glazing + mullions
+        sg.fillStyle(glass, 0.72).fillRect(px, gy, 7, gh);
+        sg.fillStyle(glassHi, 0.5).fillRect(px, gy, 7, 2);
+        sg.fillStyle(mull, 1).fillRect(px + 7, gy - 1, 3, gh + 2);
+      }
+      sg.fillStyle(mull, 1).fillRect(x, y + h - 9, w, 3);                                // bottom rail
+      sg.fillStyle(roof, 1).fillRect(x - 2, y, w + 4, 6);                                // roof cap + overhang
+      sg.fillStyle(steelHi, 1).fillRect(x - 2, y, w + 4, 2);
+    } else {
+      shadows.fillStyle(0x000000, 0.20).fillRect(x + w - 2, y + 6, 9, h - 12);           // ground shadow (E)
+      sg.fillStyle(dark, 1);
+      [0.30, 0.70].forEach(f => sg.fillRect(x + w - 4, y + h * f - 2, 13, 5));            // pylons to the east
+      sg.fillRect(x + w - 7, y, 8, h);                                                   // east underside
+      sg.fillStyle(steel, 1).fillRect(x, y, w - 4, h);                                   // steel body
+      const gx = x + 5, gw = Math.max(4, w - 15);
+      for (let py = y + 3; py + 7 <= y + h; py += 10) {                                  // glazing + mullions
+        sg.fillStyle(glass, 0.72).fillRect(gx, py, gw, 7);
+        sg.fillStyle(glassHi, 0.5).fillRect(gx, py, 2, 7);
+        sg.fillStyle(mull, 1).fillRect(gx - 1, py + 7, gw + 2, 3);
+      }
+      sg.fillStyle(roof, 1).fillRect(x - 2, y - 2, w, 6);                                // north roof cap
+      sg.fillStyle(roof, 1).fillRect(x - 2, y + h - 4, w, 6);                            // south roof cap
+      sg.fillStyle(steelHi, 1).fillRect(x, y, 2, h);                                     // west highlight edge
+    }
+  }
+
   // ----- overworld renderer --------------------------------------------------
   function drawBuildings(scene, solids) {
     const gg = geo();
@@ -446,15 +487,28 @@
       const z = scene.add.zone((r2.x + r2.w / 2) * TILE, (r2.y + 0.5) * TILE, r2.w * TILE, TILE);
       scene.physics.add.existing(z, true); solids.add(z);
     });
+    // Skybridges: enclosed glass walkways at high depth (player passes under).
+    // Orientation + span come from the two buildings each one connects, so it
+    // visibly plugs into both; the SKY footprint stays the walkable gap tile.
     const sg = scene.add.graphics().setDepth(200000);
     SKY.forEach(sb => {
-      const x = sb.x * TILE, y = sb.y * TILE, w = (sb.w || 1) * TILE, h = (sb.h || 1) * TILE;
-      shadows.fillStyle(0x000000, 0.18).fillRect(x + 4, y + h, w, 6);
-      sg.fillStyle(0x39477c, 1).fillRect(x, y, w, h);
-      sg.fillStyle(0x4a5a94, 1).fillRect(x, y, w, 4);
-      sg.fillStyle(0x9fc4e0, 0.65);
-      for (let wx = x + 4; wx + 5 < x + w; wx += 10) sg.fillRect(wx, y + 5, 5, Math.max(4, h - 9));
-      sg.fillStyle(0x232c4e, 1).fillRect(x, y + h - 3, w, 3);
+      const A = byId(sb.a), B = byId(sb.b);
+      let x, y, w, h, horiz;
+      if (A && B) {
+        horiz = Math.abs((A.x + A.w / 2) - (B.x + B.w / 2)) >= Math.abs((A.y + A.h / 2) - (B.y + B.h / 2));
+        if (horiz) {
+          const L = A.x <= B.x ? A : B, R = A.x <= B.x ? B : A;
+          x = (L.x + L.w) * TILE - 6; w = (R.x * TILE + 6) - x;
+          y = sb.y * TILE; h = (sb.h || 1) * TILE;
+        } else {
+          const U = A.y <= B.y ? A : B, Dn = A.y <= B.y ? B : A;
+          y = (U.y + U.h) * TILE - 6; h = (Dn.y * TILE + 6) - y;
+          x = sb.x * TILE; w = (sb.w || 1) * TILE;
+        }
+      } else {
+        x = sb.x * TILE; y = sb.y * TILE; w = (sb.w || 1) * TILE; h = (sb.h || 1) * TILE; horiz = w >= h;
+      }
+      drawSkybridge(sg, shadows, x, y, w, h, horiz);
     });
     return portals;
   }

@@ -53,7 +53,10 @@
     if (c.up.isDown || w.up.isDown) vy = -1; else if (c.down.isDown || w.down.isDown) vy = 1;
     if (vx && vy) { vx *= 0.7071; vy *= 0.7071; }
     scene.player.body.setVelocity(vx * speed, vy * speed);
-    scene.player.setDepth(scene.player.y); // Y-sort: pass behind trees / props
+    // Y-sort by the player's FEET (origin is 0.5,0.5, so add half-height) to match
+    // every prop/NPC which sorts on its base — otherwise props ~28px north of the
+    // feet wrongly draw over the player (buildings, shrubs, lamps, trees…).
+    scene.player.setDepth(scene.player.y + scene.player.displayHeight / 2 - 2);
   }
   function stdControls(scene) {
     scene.cursors = scene.input.keyboard.createCursorKeys();
@@ -110,7 +113,10 @@
     const W = root.IRWorld, now = scene.time.now;
     if (scene.busy) { cars.forEach(c => c.body && c.body.setVelocity(0, 0)); return; }
     const people = [scene.player].concat(scene._npcs || []).filter(p => p && p.body);
-    const personBox = (p) => ({ x: p.x - 16, y: p.y - 48, w: 32, h: 52 });
+    // Detect a person by their FEET (physics body), not their sprite — a head that
+    // visually pokes into the road tile while they stand on the sidewalk must NOT
+    // trip the car (Ryan). The body sits at the feet for both player and NPCs.
+    const personBox = (p) => ({ x: p.body.x, y: p.body.y, w: p.body.width, h: p.body.height });
     const carBox = (c) => ({ x: c.x - c.displayWidth / 2, y: c.y - c.displayHeight / 2, w: c.displayWidth, h: c.displayHeight });
     const PERSON_GAP = 48, CAR_GAP = 16, M = 130;
     for (const c of cars) {
@@ -246,9 +252,17 @@
     }
   }
   // chair drawn over the sprite's legs ≈ seated (audience, students, waiting rooms)
+  // one size for EVERY chair (empty or occupied), matched to the 2× cast
+  const CHAIR_SCALE = 1.6;
+  function addChair(scene, x, y) {   // an empty chair standing on the floor at (x,y)
+    return scene.add.image(x, y, "t_chair").setScale(CHAIR_SCALE).setOrigin(0.5, 1).setDepth(y);
+  }
   function npcSeated(scene, x, y, role, dir, solids) {
-    const s = npcIdle(scene, x, y, role, dir || "u");
-    scene.add.image(x, y + 2, "t_chair").setScale(1.6).setOrigin(0.5, 1).setDepth(y + 3); // chair sized to the 2× cast
+    // chair on the floor BEHIND the sitter; the sitter is lowered onto the seat
+    // and drawn IN FRONT, so they read as sitting IN the chair (not behind it).
+    scene.add.image(x, y + 4, "t_chair").setScale(CHAIR_SCALE).setOrigin(0.5, 1).setDepth(y);
+    const s = npcIdle(scene, x, y - 10, role, dir || "d");
+    s.setDepth(y + 1);
     if (solids) { const z = scene.add.zone(x, y - 6, 26, 18); scene.physics.add.existing(z, true); solids.add(z); }
     return s;
   }
@@ -971,7 +985,7 @@
       if (floor === "1") {
         this.add.image(416, 300, "t_desk").setOrigin(0).setDepth(362); solid(480, 340, 128, 42);
         label(this, 480, 292, "Reception", 10).setAlpha(0.7).setDepth(4);
-        for (let i = 0; i < 5; i++) this.add.image(170 + i * 30, 420, "t_chair").setOrigin(0.5, 1).setDepth(420);
+        for (let i = 0; i < 5; i++) addChair(this, 165 + i * 40, 420);
         this.add.image(560, 160, "t_board").setOrigin(0).setDepth(3);
         [[140, 250], [820, 250], [140, 570], [820, 570]].forEach(([px, py]) => this.add.image(px, py, "t_plant").setOrigin(0.5, 1).setDepth(py));
         flavor(360, 470, "Information desk", "The volunteer smiles: \"Interventional radiology? Elevator to 3 — but round on your patients on 2 first.\"");
@@ -1063,7 +1077,7 @@
         } else { // us_room
           this.add.image(410, Y0 + 30, "t_uscart").setOrigin(0.5, 0).setDepth(Y0 + 74); solid(410, Y0 + 62, 30, 20);
           this.add.image(480, Y0 + 52, "t_bed").setOrigin(0.5, 0).setDepth(Y0 + 80); solid(480, Y0 + 82, 36, 40);
-          this.add.image(556, Y0 + 96, "t_chair").setOrigin(0.5, 1).setDepth(Y0 + 96);
+          addChair(this, 556, Y0 + 96);
           this.add.image(600, Y0 + 50, "t_plant").setOrigin(0.5, 1).setDepth(Y0 + 50);
           staffNpc(560, Y0 + 116, "residentF", "l");
           flavor(250, 545, "Gel warmer", "A dozen bottles, all exactly body temperature. Civilization.");
@@ -1107,7 +1121,7 @@
         const tbl = this.add.graphics().setDepth(312 + 130);
         tbl.fillStyle(0x9a7a56, 1).fillCircle(300, 440, 18); tbl.fillStyle(0xb08c62, 1).fillCircle(300, 440, 14);
         solid(300, 440, 34, 30);
-        [[270, 470], [330, 470], [270, 418], [330, 418]].forEach(([cx, cy]) => this.add.image(cx, cy, "t_chair").setOrigin(0.5, 1).setDepth(cy));
+        [[270, 470], [330, 470], [270, 418], [330, 418]].forEach(([cx, cy]) => addChair(this, cx, cy));
         this.add.image(360, 316, "t_board").setOrigin(0).setDepth(3);
         this.add.image(160, 360, "t_plant").setOrigin(0.5, 1).setDepth(360);
         this.add.image(424, 372, "t_kiosk").setOrigin(0.5, 1).setDepth(372); solid(424, 364, 20, 14);
