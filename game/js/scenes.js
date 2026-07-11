@@ -69,12 +69,73 @@
     stdControls(scene);
   }
   // NPC ↔ world physics: every patrolling NPC collides with the scene's solids
-  // and blocks/is blocked by the player (no ghosting through desks or people).
+  // (walls, furniture, idle-NPC zones), with the PLAYER, and with OTHER NPCs —
+  // so nobody ghosts through anybody. Call once, AFTER the player + all NPCs
+  // exist. (Idle/seated NPCs are already static bodies inside `solids`.)
   function wireNpcPhysics(scene, solids) {
-    (scene._npcs || []).forEach(n => {
-      scene.physics.add.collider(n, solids);
-      if (scene.player) scene.physics.add.collider(scene.player, n);
-    });
+    const npcs = (scene._npcs || []).filter(n => n && n.body);
+    if (!npcs.length) return;
+    scene.physics.add.collider(npcs, solids);
+    scene.physics.add.collider(npcs, npcs);
+    if (scene.player) scene.physics.add.collider(scene.player, npcs);
+    if (scene._cars && scene._cars.length) scene.physics.add.collider(npcs, scene._cars);
+  }
+
+  // ---- traffic: physics cars that queue and stop+honk for people ------------
+  function aabb(a, b) { return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y; }
+  let _audioCtx = null;
+  function honkBeep() {
+    try {
+      const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
+      _audioCtx = _audioCtx || new AC();
+      if (_audioCtx.state === "suspended") _audioCtx.resume();
+      const o = _audioCtx.createOscillator(), g = _audioCtx.createGain();
+      o.type = "square"; o.frequency.value = 300; g.gain.value = 0.04;
+      o.connect(g); g.connect(_audioCtx.destination);
+      const t = _audioCtx.currentTime; o.start(t); o.stop(t + 0.16);
+    } catch (e) { /* audio blocked by the browser — the HONK! bubble still shows */ }
+  }
+  function carHonk(scene, c) {
+    const t = scene.add.text(c.x, c.y - c.displayHeight / 2 - 8, "HONK!", {
+      fontFamily: "monospace", fontSize: "13px", color: "#ffde59", backgroundColor: "#000000aa", padding: { x: 4, y: 2 } })
+      .setOrigin(0.5, 1).setDepth(9000);
+    scene.tweens.add({ targets: t, y: t.y - 16, alpha: 0, duration: 950, onComplete: () => t.destroy() });
+    honkBeep();
+  }
+  // Per-frame car AI: drive by velocity; if a person (player/NPC) is in the
+  // look-ahead, STOP + honk and wait; else if another car is close ahead, queue;
+  // else cruise. Cars never overlap each other or people. Wrap at the map edges.
+  function updateCars(scene) {
+    const cars = scene._cars; if (!cars || !cars.length) return;
+    const W = root.IRWorld, now = scene.time.now;
+    if (scene.busy) { cars.forEach(c => c.body && c.body.setVelocity(0, 0)); return; }
+    const people = [scene.player].concat(scene._npcs || []).filter(p => p && p.body);
+    const personBox = (p) => ({ x: p.x - 16, y: p.y - 48, w: 32, h: 52 });
+    const carBox = (c) => ({ x: c.x - c.displayWidth / 2, y: c.y - c.displayHeight / 2, w: c.displayWidth, h: c.displayHeight });
+    const PERSON_GAP = 48, CAR_GAP = 16, M = 130;
+    for (const c of cars) {
+      if (!c.body) continue;
+      const halfF = (c.horiz ? c.displayWidth : c.displayHeight) / 2;
+      const halfP = (c.horiz ? c.displayHeight : c.displayWidth) / 2;
+      const look = (dist) => c.horiz
+        ? { x: c.dir > 0 ? c.x + halfF : c.x - halfF - dist, y: c.y - halfP, w: dist, h: halfP * 2 }
+        : { x: c.x - halfP, y: c.dir > 0 ? c.y + halfF : c.y - halfF - dist, w: halfP * 2, h: dist };
+      let stop = false, honk = false;
+      const pBox = look(PERSON_GAP);
+      for (const p of people) { if (aabb(pBox, personBox(p))) { stop = true; honk = true; break; } }
+      if (!stop) { const cBox = look(CAR_GAP); for (const o of cars) { if (o !== c && o.body && aabb(cBox, carBox(o))) { stop = true; break; } } }
+      if (stop) {
+        c.body.setVelocity(0, 0);
+        if (honk && now >= (c.honkCd || 0)) { carHonk(scene, c); c.honkCd = now + 1600; }
+      } else {
+        c.body.setVelocity(c.horiz ? c.dir * c.cruise : 0, c.horiz ? 0 : c.dir * c.cruise);
+      }
+      c.setDepth(c.y);
+      if (c.horiz && c.dir > 0 && c.x > W.WPX + M) c.x = -M;
+      else if (c.horiz && c.dir < 0 && c.x < -M) c.x = W.WPX + M;
+      else if (!c.horiz && c.dir > 0 && c.y > W.HPX + M) c.y = -M;
+      else if (!c.horiz && c.dir < 0 && c.y < -M) c.y = W.HPX + M;
+    }
   }
   function hud(scene, lines) {
     return scene.add.text(10, 8, lines, { fontFamily: "monospace", fontSize: "12px", color: TEXT, backgroundColor: "#0e1420cc", padding: { x: 8, y: 5 } })
@@ -303,6 +364,7 @@
     create(data) {
       const W = root.IRWorld, TILE = W.TILE;
       this.busy = false;
+      this._npcs = []; this._cars = [];      // reset per (re)create so restarts don't keep stale bodies
       W.ensureTextures(this);
 
       // --- layered tilemap: background = terrain (grass/roads/lots/sidewalks)
@@ -337,29 +399,26 @@
         }
       });
 
-      // --- street traffic: cars loop both ways along every 3-wide road -------
+      // --- street traffic: physics cars that queue + stop/honk for people ----
+      //     (immovable so the player can't shove them; driven by velocity, with
+      //     look-ahead braking handled in updateCars()). ------------------------
       const RD = root.IRWorldData && root.IRWorldData.roads;
       if (RD) {
         const CAR_TINTS = [0xd05a4a, 0x4a7ad0, 0xd8b84a, 0x9aa4b0, 0x4aa06a, 0xcfd4da, 0x8a6ad0];
         const lane = 0.62 * TILE;              // right-hand traffic, one lane each way
-        const car = (horiz, center, dir) => {
+        const mkCar = (horiz, center, dir, slot) => {
           const tint = CAR_TINTS[(Math.random() * CAR_TINTS.length) | 0];
-          const dur = 13000 + Math.random() * 10000;
-          if (horiz) {
-            const y = center * TILE + TILE / 2 + (dir > 0 ? lane : -lane);
-            const c = this.add.image(dir > 0 ? -50 : W.WPX + 50, y, "t_car_h")
-              .setScale(2).setTint(tint).setFlipX(dir < 0).setDepth(y);
-            this.tweens.add({ targets: c, x: dir > 0 ? W.WPX + 50 : -50, duration: dur, repeat: -1, delay: Math.random() * dur });
-          } else {
-            const x = center * TILE + TILE / 2 + (dir > 0 ? -lane : lane);
-            const c = this.add.image(x, dir > 0 ? -60 : W.HPX + 60, "t_car_v")
-              .setScale(2).setTint(tint).setFlipY(dir < 0).setDepth(0);
-            this.tweens.add({ targets: c, y: dir > 0 ? W.HPX + 60 : -60, duration: dur * 1.15, repeat: -1,
-              delay: Math.random() * dur, onUpdate: () => c.setDepth(c.y) });
-          }
+          let x, y;
+          if (horiz) { y = center * TILE + TILE / 2 + (dir > 0 ? lane : -lane); x = dir > 0 ? (-140 - slot * 280) : (W.WPX + 140 + slot * 280); }
+          else { x = center * TILE + TILE / 2 + (dir > 0 ? -lane : lane); y = dir > 0 ? (-160 - slot * 320) : (W.HPX + 160 + slot * 320); }
+          const c = this.physics.add.image(x, y, horiz ? "t_car_h" : "t_car_v").setScale(2).setTint(tint).setDepth(y);
+          if (horiz) c.setFlipX(dir < 0); else c.setFlipY(dir < 0);
+          c.body.setImmovable(true); c.body.pushable = false; c.body.setAllowGravity(false);
+          c.horiz = horiz; c.dir = dir; c.cruise = 72 + Math.random() * 46; c.honkCd = 0;
+          this._cars.push(c);
         };
-        [RD.north, RD.south, RD.route9].forEach(cy => [1, -1].forEach(dir => { car(true, cy, dir); car(true, cy, dir); }));
-        [RD.plantation, RD.lakeAve].forEach(cx => [1, -1].forEach(dir => car(false, cx, dir)));
+        [RD.north, RD.south, RD.route9].forEach(cy => [1, -1].forEach(dir => { mkCar(true, cy, dir, 0); mkCar(true, cy, dir, 1); }));
+        [RD.plantation, RD.lakeAve].forEach(cx => [1, -1].forEach(dir => mkCar(false, cx, dir, 0)));
       }
 
       // --- trees (Y-sorted, trunk-only collision). Scaled 1.5× so a full-grown
@@ -397,6 +456,8 @@
       spawnPlayer(this, sp.x, sp.y);
       this.physics.world.setBounds(0, 0, W.WPX, W.HPX);
       this.physics.add.collider(this.player, solids);
+      if (this._cars.length) this.physics.add.collider(this.player, this._cars); // can't walk through a car
+      wireNpcPhysics(this, solids);                                              // NPCs vs walls/each other/player/cars
       this.cameras.main.setBounds(0, 0, W.WPX, W.HPX).startFollow(this.player, true, 0.15, 0.15).setBackgroundColor("#101724");
 
       // --- HUD + campus map key
@@ -452,7 +513,7 @@
       makePortals(this, portals);
       if (!S.seenIntro) { S.seenIntro = true; root.IRUI.toast("Welcome to the University Campus. Walk anywhere — or press [M] for the shuttle map.", 3500); }
     },
-    update() { movePlayer(this, 240); updatePortals(this); },
+    update() { movePlayer(this, 240); updatePortals(this); updateCars(this); },
   };
 
   // ======================================================================
@@ -465,6 +526,7 @@
       const b = W.byId(data && data.id) || W.buildings.find(x => x.enter === "Lobby");
       const upper = data && data.floor === "library";       // MSB library lives upstairs
       this.busy = false;
+      this._npcs = [];                                       // reset per (re)create
       W.ensureTextures(this); W.paintInterior(this);
       this.cameras.main.setBackgroundColor("#0b1019").setBounds(0, 0, 960, 640);
       this.physics.world.setBounds(112, 232, 736, 330);
@@ -525,6 +587,7 @@
         portals.push({ x: 818, y: 262, w: 60, h: 40, label: "Stairs down — Lobby", onEnter: () => this.scene.restart({ id: b.id }) });
         spawnPlayer(this, 770, 300);
         this.physics.add.collider(this.player, solids);
+        wireNpcPhysics(this, solids);
         hud(this, "[E] interact · stairs to go down");
         makePortals(this, portals);
         return;
@@ -656,6 +719,7 @@
 
       spawnPlayer(this, 480, y0 + rh - 70);
       this.physics.add.collider(this.player, solids);
+      wireNpcPhysics(this, solids);
       hud(this, "[E] interact · exit at the bottom door");
       makePortals(this, portals);
     },
@@ -770,7 +834,7 @@
       // scene.restart() reuses this instance — clear per-floor state or the ward
       // refreshers leak onto other floors (the "floating bodies" bug).
       this._refreshBeds = null; this._refreshRooms = null;
-      this._ptSprites = []; this._roomSprites = [];
+      this._ptSprites = []; this._roomSprites = []; this._npcs = [];
       W.ensureTextures(this); W.paintInterior(this);
       this.cameras.main.setBackgroundColor("#0b1019");
 
@@ -1081,6 +1145,7 @@
       spawnPlayer(this, spawnX, (floor === "1" || floor === "2") ? 420 : 520);
       this.physics.world.setBounds(130, 232, 700, 358);
       this.physics.add.collider(this.player, solids);
+      wireNpcPhysics(this, solids);                 // patrolling staff vs walls/furniture/each other/player
       refreshHud();
       makePortals(this, portals);
       if (this._refreshBeds) this._refreshBeds();   // initial NPC draw + live portal labels

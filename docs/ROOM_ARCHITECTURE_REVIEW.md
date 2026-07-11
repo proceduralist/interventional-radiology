@@ -139,13 +139,41 @@ Phaser scene rendering isn't node-testable. On the Pages URL after you push, ple
 
 ---
 
-## 7. Commit (from your Mac — sandbox can't push)
+## 7. Physics pass (collisions + traffic)
+
+The root cause: `wireNpcPhysics` existed but was **never called**, and cars were plain
+tweened images with no bodies. Both fixed.
+
+- **People never phase through anything.** `wireNpcPhysics(scene, solids)` is now called in
+  the Overworld, both Lobby floors and every Hospital floor, after the player + NPCs exist.
+  It colliders each patrolling NPC against the walls/furniture (`solids`), against **other
+  NPCs**, against the **player**, and against **cars**. Idle/seated NPCs were already static
+  bodies inside `solids`, so the player and moving NPCs stop on them too. NPCs are
+  `pushable = false` so the player can't shove staff around.
+- **The player can't walk through walls, people, cars, or objects.** Player↔solids (walls +
+  furniture + idle-NPC zones), player↔NPCs, and player↔cars colliders are all in place.
+- **Cars are real physics bodies now** (immovable, velocity-driven), not tweens. Per frame
+  (`updateCars`): a car looks ahead in its lane; if a **person (player or NPC)** is within
+  ~48 px it **stops, shows a `HONK!` bubble (+ a short Web-Audio beep) and waits** until they
+  move; if another **car** is close ahead it **queues** (no overlap); otherwise it cruises.
+  Cars wrap at the map edges to keep traffic looping, and freeze while a menu/map overlay is
+  open. Look-ahead braking is what prevents car↔car and car↔person overlap (two immovable
+  bodies can't separate, so stopping short is the mechanism).
+- **Note:** the Overworld currently has no pedestrian NPCs, so on campus the honk fires for
+  **you** crossing a road; the NPC path is exercised anywhere staff patrol (lobbies/hospital
+  have no cars, but the code is general). Say the word if you want a few campus pedestrians
+  added so the car-vs-NPC honk is visible outdoors.
+
+_Honk = visual `HONK!` bubble always; the beep is best-effort (browsers block audio until
+you've clicked once — after the login click it works)._
+
+## 8. Commit (from your Mac — sandbox can't push)
 
 ```bash
 cd ~/Documents/Claude/Projects/Interventional\ Radiology
 rm -f .git/index.lock
 git add -A
-git commit -m "The Quad promenade + no-nesting rooms (adjacent partitioned suites), 2x-cast prop scaling"
+git commit -m "Quad promenade + no-nesting rooms + real physics (NPC/car collisions, cars stop+honk for people)"
 git push
 ```
 _Hard-refresh after pushing (service worker is network-first for /game/, but close stale tabs)._
