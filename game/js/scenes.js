@@ -43,8 +43,12 @@
       }
     }
     scene._near = near;
-    if (near) scene._hint.setText("▸ " + near.label + "   [E]").setPosition(scene.player.x - 40, scene.player.y - 52).setVisible(true);
-    else scene._hint.setVisible(false);
+    if (near) {
+      // setText re-rasterizes the label texture — only do it when the label
+      // actually changes, else it fires 60×/s near a building and stutters.
+      if (scene._hintLabel !== near.label) { scene._hint.setText("▸ " + near.label + "   [E]"); scene._hintLabel = near.label; }
+      scene._hint.setPosition(scene.player.x - 40, scene.player.y - 52).setVisible(true);
+    } else { scene._hint.setVisible(false); scene._hintLabel = null; }
   }
   function movePlayer(scene, speed) {
     if (scene.busy) { scene.player.body.setVelocity(0, 0); return; }
@@ -85,7 +89,8 @@
   }
 
   // ---- traffic: physics cars that queue and stop+honk for people ------------
-  function aabb(a, b) { return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y; }
+  // primitive AABB (no temp objects — this runs for every car every frame)
+  function aabb(ax, ay, aw, ah, bx, by, bw, bh) { return ax < bx + bw && ax + aw > bx && ay < by + bh && ay + ah > by; }
   let _audioCtx = null;
   function honkBeep() {
     try {
@@ -99,43 +104,48 @@
     } catch (e) { /* audio blocked by the browser — the HONK! bubble still shows */ }
   }
   function carHonk(scene, c) {
-    const t = scene.add.text(c.x, c.y - c.displayHeight / 2 - 8, "HONK!", {
-      fontFamily: "monospace", fontSize: "13px", color: "#ffde59", backgroundColor: "#000000aa", padding: { x: 4, y: 2 } })
-      .setOrigin(0.5, 1).setDepth(9000);
-    scene.tweens.add({ targets: t, y: t.y - 16, alpha: 0, duration: 950, onComplete: () => t.destroy() });
+    // reuse ONE bubble per car (creating a Text every honk re-rasterizes + churns GC)
+    let t = c.honkText;
+    if (!t) {
+      t = c.honkText = scene.add.text(0, 0, "HONK!", {
+        fontFamily: "monospace", fontSize: "13px", color: "#ffde59", backgroundColor: "#000000aa", padding: { x: 4, y: 2 } })
+        .setOrigin(0.5, 1).setDepth(9000).setVisible(false);
+    }
+    scene.tweens.killTweensOf(t);
+    t.setPosition(c.x, c.y - c.displayHeight / 2 - 8).setAlpha(1).setVisible(true);
+    scene.tweens.add({ targets: t, y: t.y - 16, alpha: 0, duration: 950, onComplete: () => t.setVisible(false) });
     honkBeep();
   }
   // Per-frame car AI: drive by velocity; if a person (player/NPC) is in the
   // look-ahead, STOP + honk and wait; else if another car is close ahead, queue;
-  // else cruise. Cars never overlap each other or people. Wrap at the map edges.
+  // else cruise. Zero per-frame allocation (people list cached, boxes inlined) so
+  // it never triggers a GC hitch while you're moving. Wrap at the map edges.
   function updateCars(scene) {
     const cars = scene._cars; if (!cars || !cars.length) return;
-    const W = root.IRWorld, now = scene.time.now;
-    if (scene.busy) { cars.forEach(c => c.body && c.body.setVelocity(0, 0)); return; }
-    const people = [scene.player].concat(scene._npcs || []).filter(p => p && p.body);
-    // Detect a person by their FEET (physics body), not their sprite — a head that
-    // visually pokes into the road tile while they stand on the sidewalk must NOT
-    // trip the car (Ryan). The body sits at the feet for both player and NPCs.
-    const personBox = (p) => ({ x: p.body.x, y: p.body.y, w: p.body.width, h: p.body.height });
-    const carBox = (c) => ({ x: c.x - c.displayWidth / 2, y: c.y - c.displayHeight / 2, w: c.displayWidth, h: c.displayHeight });
+    const W = root.IRWorld, now = scene.time.now, npcs = scene._npcs || [], player = scene.player;
+    if (scene.busy) { for (let i = 0; i < cars.length; i++) if (cars[i].body) cars[i].body.setVelocity(0, 0); return; }
     const PERSON_GAP = 48, CAR_GAP = 16, M = 130;
-    for (const c of cars) {
-      if (!c.body) continue;
+    // person detection uses the FEET (physics body), not the sprite, so a head that
+    // pokes into the road tile from the sidewalk does NOT trip the car (Ryan).
+    for (let i = 0; i < cars.length; i++) {
+      const c = cars[i]; if (!c.body) continue;
       const halfF = (c.horiz ? c.displayWidth : c.displayHeight) / 2;
       const halfP = (c.horiz ? c.displayHeight : c.displayWidth) / 2;
-      const look = (dist) => c.horiz
-        ? { x: c.dir > 0 ? c.x + halfF : c.x - halfF - dist, y: c.y - halfP, w: dist, h: halfP * 2 }
-        : { x: c.x - halfP, y: c.dir > 0 ? c.y + halfF : c.y - halfF - dist, w: halfP * 2, h: dist };
+      const lx = c.horiz ? (c.dir > 0 ? c.x + halfF : c.x - halfF - PERSON_GAP) : c.x - halfP;
+      const ly = c.horiz ? c.y - halfP : (c.dir > 0 ? c.y + halfF : c.y - halfF - PERSON_GAP);
+      const lw = c.horiz ? PERSON_GAP : halfP * 2, lh = c.horiz ? halfP * 2 : PERSON_GAP;
       let stop = false, honk = false;
-      const pBox = look(PERSON_GAP);
-      for (const p of people) { if (aabb(pBox, personBox(p))) { stop = true; honk = true; break; } }
-      if (!stop) { const cBox = look(CAR_GAP); for (const o of cars) { if (o !== c && o.body && aabb(cBox, carBox(o))) { stop = true; break; } } }
-      if (stop) {
-        c.body.setVelocity(0, 0);
-        if (honk && now >= (c.honkCd || 0)) { carHonk(scene, c); c.honkCd = now + 1600; }
-      } else {
-        c.body.setVelocity(c.horiz ? c.dir * c.cruise : 0, c.horiz ? 0 : c.dir * c.cruise);
+      const pb = player && player.body;
+      if (pb && aabb(lx, ly, lw, lh, pb.x, pb.y, pb.width, pb.height)) { stop = true; honk = true; }
+      if (!stop) for (let j = 0; j < npcs.length; j++) { const b = npcs[j].body; if (b && aabb(lx, ly, lw, lh, b.x, b.y, b.width, b.height)) { stop = honk = true; break; } }
+      if (!stop) {
+        const cx = c.horiz ? (c.dir > 0 ? c.x + halfF : c.x - halfF - CAR_GAP) : c.x - halfP;
+        const cy = c.horiz ? c.y - halfP : (c.dir > 0 ? c.y + halfF : c.y - halfF - CAR_GAP);
+        const cw = c.horiz ? CAR_GAP : halfP * 2, ch = c.horiz ? halfP * 2 : CAR_GAP;
+        for (let j = 0; j < cars.length; j++) { const o = cars[j]; if (o !== c && o.body && aabb(cx, cy, cw, ch, o.x - o.displayWidth / 2, o.y - o.displayHeight / 2, o.displayWidth, o.displayHeight)) { stop = true; break; } }
       }
+      if (stop) { c.body.setVelocity(0, 0); if (honk && now >= (c.honkCd || 0)) { carHonk(scene, c); c.honkCd = now + 1600; } }
+      else c.body.setVelocity(c.horiz ? c.dir * c.cruise : 0, c.horiz ? 0 : c.dir * c.cruise);
       c.setDepth(c.y);
       if (c.horiz && c.dir > 0 && c.x > W.WPX + M) c.x = -M;
       else if (c.horiz && c.dir < 0 && c.x < -M) c.x = W.WPX + M;
