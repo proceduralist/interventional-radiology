@@ -414,17 +414,12 @@
     g.fillStyle(0x3b7440, 1); g.fillCircle(8, 11, 5); g.fillCircle(19, 12, 5); g.fillCircle(13, 7, 5);
     g.fillStyle(0x4f8f52, 0.85); g.fillCircle(11, 8, 3); g.fillCircle(16, 9, 3);
     g.generateTexture("t_shrub", 26, 24); g.destroy();
-    // bike rack with two parked bikes (rack bar on posts + wheels/frame)
+    // empty bike rack: three inverted-U hoops on a ground rail (no bikes — Ryan)
     g = scene.make.graphics({ add: false });
-    g.fillStyle(0x000000, 0.22); g.fillEllipse(22, 27, 42, 4);
-    g.fillStyle(0x7c828c, 1); g.fillRect(4, 13, 36, 3); g.fillRect(6, 13, 3, 12); g.fillRect(35, 13, 3, 12);
-    const bike = (bx, tint) => {
-      g.lineStyle(2, tint, 1);
-      g.strokeCircle(bx, 20, 5); g.strokeCircle(bx + 13, 20, 5);
-      g.beginPath(); g.moveTo(bx, 20); g.lineTo(bx + 6, 11); g.lineTo(bx + 13, 20); g.lineTo(bx, 20);
-      g.moveTo(bx + 6, 11); g.lineTo(bx + 3, 20); g.strokePath();
-    };
-    bike(7, 0xcf5a4a); bike(22, 0x4a7ad0);
+    g.fillStyle(0x000000, 0.22); g.fillEllipse(22, 27, 40, 4);
+    g.fillStyle(0x7c828c, 1); g.fillRect(6, 24, 32, 3);
+    g.lineStyle(3, 0x8b929c, 1);
+    [11, 22, 33].forEach((hx) => { g.beginPath(); g.moveTo(hx - 6, 25); g.lineTo(hx - 6, 12); g.lineTo(hx + 6, 12); g.lineTo(hx + 6, 25); g.strokePath(); });
     g.generateTexture("t_bikerack", 44, 30); g.destroy();
     // skybridges are drawn as graphics rects in drawBuildings (variable size/orientation)
   }

@@ -158,7 +158,7 @@
   function ensureNpcAnims(scene) {
     if (!scene.textures.exists("npcsheet") || scene.anims.exists("npc0-d")) return;
     for (let c = 0; c < 8; c++) Object.keys(NPC_DIR).forEach(dir => {
-      scene.anims.create({ key: "npc" + c + "-" + dir, frameRate: 6, repeat: -1,
+      scene.anims.create({ key: "npc" + c + "-" + dir, frameRate: 4.5, repeat: -1,
         frames: [0, 1, 2, 1].map(f => ({ key: "npcsheet", frame: npcFrame(c, dir, f) })) });
       scene.anims.create({ key: "npc" + c + "-talk-" + dir, frameRate: 2.5, repeat: -1,
         frames: [1, 0, 1, 2].map(f => ({ key: "npcsheet", frame: npcFrame(c, dir, f) })) });
@@ -183,8 +183,17 @@
     if (s.play) s.play("npc" + npcCharOf(role) + "-talk-" + (dir || "d"));
     return s;
   }
-  // Patrolling NPCs are PHYSICS bodies: velocity-driven between two waypoints,
-  // reversing on arrival OR when blocked by furniture/walls/the player.
+  // Patrolling NPCs stroll slowly between two waypoints with natural stop-and-go:
+  // walk a leg, pause a beat, then continue or turn around. Stepped once per frame
+  // by updateNpcs(). They stay physics bodies, so they still collide with walls,
+  // furniture, each other, the player and cars. (dur is kept for call-site compat
+  // but no longer sets the pace — everyone walks at a calm human speed.)
+  function npcDirKey(p) { return p.horiz ? (p.dir > 0 ? "r" : "l") : (p.dir > 0 ? "d" : "u"); }
+  function npcWalkAnim(s, p) { if (s.play) s.play("npc" + p.char + "-" + npcDirKey(p), true); }
+  function npcStandAnim(s, p) {
+    if (s.anims) s.anims.stop();
+    if (s.setFrame && s.texture && s.texture.key === "npcsheet") s.setFrame(npcFrame(p.char, npcDirKey(p), 1));
+  }
   function npcPatrol(scene, x, y, role, dx, dy, dur) {
     ensureNpcAnims(scene);
     const c = npcCharOf(role);
@@ -197,25 +206,44 @@
       s.body.setSize(14, 9).setOffset(3, 18);
     }
     s.body.pushable = false;                                // the player can't shove staff around
+    s.setDepth(s.y);
     const horiz = Math.abs(dx) >= Math.abs(dy);
-    const lo = horiz ? Math.min(x, x + dx) : Math.min(y, y + dy);
-    const hi = horiz ? Math.max(x, x + dx) : Math.max(y, y + dy);
-    const speed = Math.max(24, (hi - lo) / (dur / 2000));   // px/s for one leg ≈ dur/2
-    let dir = (horiz ? dx : dy) >= 0 ? 1 : -1;
-    const face = () => { if (s.play) s.play("npc" + c + "-" + (horiz ? (dir > 0 ? "r" : "l") : (dir > 0 ? "d" : "u"))); };
-    face();
-    scene.time.addEvent({ delay: 150, loop: true, callback: () => {
-      if (!s.body) return;
-      const pos = horiz ? s.x : s.y;
-      const blocked = horiz
-        ? (dir > 0 ? (s.body.blocked.right || s.body.touching.right) : (s.body.blocked.left || s.body.touching.left))
-        : (dir > 0 ? (s.body.blocked.down || s.body.touching.down) : (s.body.blocked.up || s.body.touching.up));
-      if (pos >= hi || pos <= lo || blocked) { dir = -dir; face(); }
-      s.body.setVelocity(horiz ? speed * dir : 0, horiz ? 0 : speed * dir);
-      s.setDepth(s.y);
-    } });
+    s._pat = {
+      horiz,
+      lo: horiz ? Math.min(x, x + dx) : Math.min(y, y + dy),
+      hi: horiz ? Math.max(x, x + dx) : Math.max(y, y + dy),
+      dir: (horiz ? dx : dy) >= 0 ? 1 : -1,
+      speed: 30 + Math.random() * 14,                      // calm ~30–44 px/s (player is 200)
+      char: c, state: "walk", until: 0,
+    };
+    npcWalkAnim(s, s._pat);
     (scene._npcs = scene._npcs || []).push(s);
     return s;
+  }
+  // Step every patrolling NPC once per frame (from each scene's update()).
+  function updateNpcs(scene) {
+    const npcs = scene._npcs; if (!npcs || !npcs.length) return;
+    const now = scene.time.now, busy = scene.busy;
+    for (const s of npcs) {
+      const p = s._pat; if (!s.body || !p) continue;
+      s.setDepth(s.y);
+      if (busy) { s.body.setVelocity(0, 0); continue; }
+      if (p.state === "pause") {
+        if (now < p.until) { s.body.setVelocity(0, 0); continue; }
+        p.state = "walk"; npcWalkAnim(s, p);               // dwell over → resume
+      }
+      const pos = p.horiz ? s.x : s.y;
+      const blocked = p.horiz
+        ? (p.dir > 0 ? (s.body.blocked.right || s.body.touching.right) : (s.body.blocked.left || s.body.touching.left))
+        : (p.dir > 0 ? (s.body.blocked.down || s.body.touching.down) : (s.body.blocked.up || s.body.touching.up));
+      if ((p.dir > 0 ? pos >= p.hi : pos <= p.lo) || blocked) {
+        p.dir = -p.dir;                                    // turn at the end / on a bump
+        p.state = "pause"; p.until = now + 800 + Math.random() * 2400;
+        s.body.setVelocity(0, 0); npcStandAnim(s, p);
+        continue;
+      }
+      s.body.setVelocity(p.horiz ? p.dir * p.speed : 0, p.horiz ? 0 : p.dir * p.speed);
+    }
   }
   // chair drawn over the sprite's legs ≈ seated (audience, students, waiting rooms)
   function npcSeated(scene, x, y, role, dir, solids) {
@@ -421,6 +449,17 @@
         [RD.plantation, RD.lakeAve].forEach(cx => [1, -1].forEach(dir => mkCar(false, cx, dir, 0)));
       }
 
+      // --- pedestrians strolling the campus sidewalks (slow + natural; wired into
+      //     the same physics, and the cars brake/honk for them at the curb). The
+      //     tile ranges below sit on verified sidewalk runs flanking the roads.
+      const ped = (cx, cy, dcx, dcy, role) => npcPatrol(this, cx * TILE + 16, cy * TILE + 16, role, dcx * TILE, dcy * TILE, 0);
+      ped(10, 11, 12, 0, "visitor");     // north-road sidewalk, heading east
+      ped(38, 11, -12, 0, "doctor");     // north-road sidewalk, heading west
+      ped(9, 48, 14, 0, "senior");       // Route 9 sidewalk
+      ped(4, 14, 0, 12, "resident");     // Plantation St sidewalk (vertical)
+      ped(49, 15, 0, 11, "residentF");   // Lake Ave sidewalk (vertical)
+      ped(33, 30, 12, 0, "visitor");     // south-road sidewalk, east of the quads
+
       // --- trees (Y-sorted, trunk-only collision). Scaled 1.5× so a full-grown
       //     campus tree still towers over the 2× player/NPC cast.
       W.treeList().forEach(t => {
@@ -515,7 +554,7 @@
       makePortals(this, portals);
       if (!S.seenIntro) { S.seenIntro = true; root.IRUI.toast("Welcome to the University Campus. Walk anywhere — or press [M] for the shuttle map.", 3500); }
     },
-    update() { movePlayer(this, 240); updatePortals(this); updateCars(this); },
+    update() { movePlayer(this, 240); updatePortals(this); updateCars(this); updateNpcs(this); },
   };
 
   // ======================================================================
@@ -725,7 +764,7 @@
       hud(this, "[E] interact · exit at the bottom door");
       makePortals(this, portals);
     },
-    update() { movePlayer(this, 210); updatePortals(this); },
+    update() { movePlayer(this, 210); updatePortals(this); updateNpcs(this); },
   };
 
   // ======================================================================
@@ -1153,7 +1192,7 @@
       if (this._refreshBeds) this._refreshBeds();   // initial NPC draw + live portal labels
       if (this._refreshRooms) this._refreshRooms(); // waiting patients + live room labels
     },
-    update() { movePlayer(this, 200); updatePortals(this); },
+    update() { movePlayer(this, 200); updatePortals(this); updateNpcs(this); },
   };
 
   // ======================================================================
