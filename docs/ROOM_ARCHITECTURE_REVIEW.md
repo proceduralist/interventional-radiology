@@ -31,26 +31,29 @@ test suites (96 tests) green; scene rendering still needs a browser playtest._
   node — the camera pans across it exactly like the rest of campus. You do **not** cross a
   gateway to be "in" the quad; you cross a gateway (a building door) only when you leave it
   to go inside a building.
+  Redesigned to the reference photo: **two quads**, each a **cobblestone plaza ('c')
+  ringing a striped mowed-lawn interior** (no paths cut the grass), a **lamp in every grass
+  corner with a shrub beside it**, and a **bike rack** on the main quad.
 - **Coordinate Bounds** (32 px tiles; world is 58×54 = 1856×1728 px):
-  - Lawn: tiles cols 17–30 × rows 19–30 → px **x[544, 992], y[608, 992]**
-  - Promenade (E–W): row 28 → y≈896; cols 14–35 → x[448, 1152]
-  - Spine (N–S from the MSB door): col 24 → x≈768; rows 19–30
-- **Portal Coordinates:** The quad owns **no portals** — it is a connective space. The
-  promenade walks you to the surrounding gateways (each a Hard Transition into that
-  building):
-  - MSB / Med School door — tile (24,19) → px (784, 624)
-  - UMass Memorial door — tile (35,29) → px (1136, 944)  → `Hospital`
-  - DiMare door — tile (14,29) → px (464, 944)
-  - Lazare door — tile (7,29) → px (240, 944)
-  - ACC door — tile (21,33) → px (688, 1072), across the south road
-- **Logic Structure:** pure data + painters, no portal logic (seamless):
+  - Main quad — tiles cols 17–30 × rows 19–24 (east of DiMare)
+  - Second quad — tiles cols 17–30 × rows 25–30 (east of Lazare)
+  - The touching cobble rows (24–25) are the walkway linking the two + the building doors.
+- **Portal Coordinates:** the quads own **no portals** — connective space. Cobble connects to
+  the south-road sidewalk (row 30) and, via a short apron, to the DiMare (14,24) and Lazare
+  (14,30) doors. Building entries stay Hard Gateways.
+- **Building restack (this pass):** Aaron Lazare moved to **directly south of DiMare, same
+  columns (12–16), one row between them** (DiMare rows 19–21, Lazare rows 25–27); Sherman
+  trimmed to h4 so everything stays **north of the south road / south of the north road**.
+  The Sherman↔DiMare skybridge moved to the new gap (row 18).
+- **Logic Structure:** terrain + furniture data + painters (seamless, no portal logic):
   ```
-  world_data.js  terrain:  'q'/'Q' = mowed-lawn stripes,  's' = paved path
-                 quad:     { benches[], lamps[], trees[] }   (tile coords)
-                 labels.greens: [[24,26,"The Quad"]]
-  world.js       tileset painter draws the lawn stripes; t_bench/t_lamp painters
-  scenes.js      Overworld renders furniture Y-sorted (setDepth = y) with trunk/seat
-                 collision zones; promenade tiles are walkable (never solid)
+  world_data.js  terrain:  'c' = cobblestone ring,  'q'/'Q' = mowing stripes
+                 quads:    [ {lamps[], shrubs[], bikeracks[]}, {…} ]   (tile coords)
+                 labels.greens: [[22,21,"The Quad"], [22,27,"S. Quad"]]
+  world.js       T.COBBLE tile + cobble painter in the tileset; t_shrub / t_bikerack
+                 textures; exports `quads`
+  scenes.js      Overworld renders each quad's lamps/shrubs/bike rack Y-sorted with
+                 base collision (can't walk through them)
   Regenerate:    python3 game/tools/gen_campus.py   → rewrites world_data.js
   ```
 
@@ -173,7 +176,7 @@ you've clicked once — after the login click it works)._
 cd ~/Documents/Claude/Projects/Interventional\ Radiology
 rm -f .git/index.lock
 git add -A
-git commit -m "Quad promenade + no-nesting rooms + real physics (NPC/car collisions, cars stop+honk for people)"
+git commit -m "Two cobblestone quads + DiMare/Lazare restack, no-nesting rooms, real physics (NPC/car collisions, cars stop+honk)"
 git push
 ```
 _Hard-refresh after pushing (service worker is network-first for /game/, but close stale tabs)._

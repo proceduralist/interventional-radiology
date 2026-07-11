@@ -25,17 +25,19 @@ VROAD_COLS = sorted({c for v in VROADS for c in span(v) if 0 <= c < COLS})
 
 # id -> geometry + door column/side + facade spec (Ryan's building specs)
 BLD = {
- "sherman": dict(x=5,  y=12, w=12, h=6,  dcol=8,  side="s", floors=11, facade="glass",     wall="#cbd0d6", roof="#39414d", accent="#9fb7cc", glass="#9fb7cc", short="SHERMAN"),
+ "sherman": dict(x=5,  y=12, w=12, h=4,  dcol=8,  side="s", floors=11, facade="glass",     wall="#cbd0d6", roof="#39414d", accent="#9fb7cc", glass="#9fb7cc", short="SHERMAN"),
  "msb":     dict(x=20, y=12, w=20, h=5,  dcol=24, side="s", floors=9,  facade="punched",   wall="#d8d1c2", roof="#7c848c", accent="#9fb7cc", glass="#5f6570", short="MED SCHOOL"),
  "ummmc":   dict(x=31, y=17, w=9,  h=10, dcol=35, side="s", floors=8,  facade="punched",   wall="#d8d1c2", roof="#8a9298", accent="#b5502f", glass="#5f6570", short="UMASS MEMORIAL"),
- "dimare":  dict(x=12, y=22, w=5,  h=5,  dcol=14, side="s", floors=14, facade="darkglass", wall="#2f3a49", roof="#232a33", accent="#c8ccd0", glass="#39465a", short="DIMARE"),
- "lazare":  dict(x=5,  y=22, w=6,  h=5,  dcol=7,  side="s", floors=9,  facade="punched",   wall="#d8d1c2", roof="#8a9298", accent="#2e6db4", glass="#5f6570", short="LAZARE"),
+ # DiMare (north) and Aaron Lazare (directly south of it, 1 row of grass between,
+ # same columns) — both north of the south road. The two quads sit to their east.
+ "dimare":  dict(x=12, y=19, w=5,  h=3,  dcol=14, side="s", floors=14, facade="darkglass", wall="#2f3a49", roof="#232a33", accent="#c8ccd0", glass="#39465a", short="DIMARE"),
+ "lazare":  dict(x=12, y=25, w=5,  h=3,  dcol=14, side="s", floors=9,  facade="punched",   wall="#d8d1c2", roof="#8a9298", accent="#2e6db4", glass="#5f6570", short="LAZARE"),
  "acc":     dict(x=20, y=34, w=4,  h=10, dcol=21, side="n", floors=7,  facade="glass",     wall="#6f93b8", roof="#8a9298", accent="#b5502f", glass="#5a7ea3", short="ACC"),
  "powerplant": dict(x=42, y=16, w=5, h=4, dcol=44, side="s", floors=3, facade="punched",  wall="#62584a", roof="#4a423a", accent="#8a7a5a", glass="#3a342c", short="POWER"),
 }
 SKY = [
  {"x":17,"y":14,"w":3,"h":2, "a":"sherman","b":"msb"},     # Sherman E <-> Med School W (open gap x17-19)
- {"x":13,"y":20,"w":2,"h":2, "a":"sherman","b":"dimare"},  # Sherman S wall(18-19) <-> DiMare roof(22): gap y20-21
+ {"x":13,"y":18,"w":3,"h":1, "a":"sherman","b":"dimare"},  # Sherman S(wall 16-17) <-> DiMare roof(19): gap row 18
 ]
 SPAWN = {"x":10, "y":6}           # grass N of the (now 3-wide) north road
 HELIPAD = {"x":42, "y":23}        # ground pad in the gap between the buildings and Lake Ave
@@ -69,22 +71,23 @@ def build_terrain():
         for r in range(ROWS):
             for cc in (v-2, v+2):
                 if 0 <= cc < COLS and g[r][cc] == ".": g[r][cc] = "s"
-    # --- The Quad: striped mowed lawn between the Med School (Sherman/MSB, N),
-    #     the research towers (Lazare/DiMare, W) and UMass Memorial (E). A paved
-    #     promenade links every surrounding entrance so it reads as a real, walked
-    #     space (project spec: realized places, not signposts). Vertical q/Q
-    #     stripes are the mowing rows the lawn painter renders. --------------------
-    for r in range(19, 31):
-        for c in range(17, 31):
-            if g[r][c] == ".": g[r][c] = "q" if c % 2 == 0 else "Q"
-    paths = []
-    paths += [(c, 28) for c in range(14, 36)]           # E-W promenade: DiMare front -> UMass Memorial door
-    paths += [(24, r) for r in range(19, 31)]           # N-S spine: MSB door -> promenade -> south sidewalk
-    paths += [(c, 29) for c in range(7, 15)]            # SW connector across the Lazare/DiMare fronts
-    paths += [(35, 29), (14, 29), (7, 29)]              # final steps onto the surrounding doors
-    paths += [(23, 27), (25, 27), (23, 28), (25, 28)]   # small paved plaza where spine meets promenade
-    for (c, r) in paths:
-        if 0 <= r < ROWS and 0 <= c < COLS and g[r][c] in (".", "q", "Q"): g[r][c] = "s"
+    # --- Two quads east of the DiMare/Lazare stack. Each is a COBBLESTONE plaza
+    #     ('c') ringing a striped mowed-lawn interior ('q'/'Q') — no paths cut the
+    #     grass (matches Ryan's reference). The main quad is east of DiMare; the
+    #     second east of Lazare; their touching cobble rows (24-25) form the
+    #     walkway that links them and the DiMare/Lazare doorways. -----------------
+    def paint_quad(c0, c1, r0, r1):
+        for r in range(r0, r1 + 1):
+            for c in range(c0, c1 + 1):
+                if not (0 <= r < ROWS and 0 <= c < COLS): continue
+                if g[r][c] not in (".", "q", "Q", "s", "c"): continue      # never overwrite roads/buildings
+                if r in (r0, r1) or c in (c0, c1): g[r][c] = "c"           # cobblestone ring
+                else: g[r][c] = "q" if c % 2 == 0 else "Q"                 # mowing stripes
+    paint_quad(17, 30, 19, 24)       # main quad  — east of DiMare
+    paint_quad(17, 30, 25, 30)       # second quad — east of Lazare
+    for c in range(14, 18):          # cobble apron from the DiMare/Lazare doors (col 14) to the quads
+        if g[24][c] in (".",): g[24][c] = "c"
+        if g[30][c] in (".", "s"): g[30][c] = "c"
     return ["".join(row) for row in g]
 
 terrain = build_terrain()
@@ -101,7 +104,7 @@ for bid, b in BLD.items():
 
 # labels object matches scenes.js Overworld: greens/lots [x,y,name], streets [x,y,angle,name], signs [x,y,text]
 labels = {
-    "greens": [[WATER[1]-1, 40, "Lake Quinsigamond"], [24, 26, "The Quad"]],
+    "greens": [[WATER[1]-1, 40, "Lake Quinsigamond"], [22, 21, "The Quad"], [22, 27, "S. Quad"]],
     "lots": [],
     "streets": [
         [PLANTATION, 6, -90, "Plantation St"],
@@ -117,9 +120,14 @@ data = {
     "COLS": COLS, "ROWS": ROWS,
     "buildings": buildings, "terrain": terrain,
     "skybridges": SKY, "spawn": SPAWN, "helipad": HELIPAD, "labels": labels,
-    "quad": {"benches": [[20, 27], [28, 27], [21, 23], [27, 22], [22, 25]],
-             "lamps": [[24, 22], [19, 28], [30, 28], [24, 20]],
-             "trees": [[19, 22], [28, 21], [21, 25], [27, 26], [25, 23]]},
+    "quads": [
+        {"lamps": [[18, 20], [29, 20], [18, 23], [29, 23]],
+         "shrubs": [[19, 20], [28, 20], [19, 23], [28, 23]],
+         "bikeracks": [[17, 22]]},
+        {"lamps": [[18, 26], [29, 26], [18, 29], [29, 29]],
+         "shrubs": [[19, 26], [28, 26], [19, 29], [28, 29]],
+         "bikeracks": []},
+    ],
     "roads": {"north": NORTH_ROAD, "south": SOUTH_ROAD, "route9": ROUTE9,
               "plantation": PLANTATION, "lakeAve": LAKE_AVE, "water": WATER, "width": ROAD_W},
 }

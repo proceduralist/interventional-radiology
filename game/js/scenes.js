@@ -430,26 +430,28 @@
         this.physics.add.existing(trunk, true); solids.add(trunk);
       });
 
-      // --- The Quad (photo-matched): benches, lamp posts, young trees on the lawn
-      const QD = W.quad;
-      if (QD) {
-        const zone = (x, y, w2, h2) => { const z = this.add.zone(x, y, w2, h2); this.physics.add.existing(z, true); solids.add(z); };
-        (QD.benches || []).forEach(([c, r]) => {
-          const bx = c * TILE + TILE / 2, by = r * TILE + TILE - 4;
-          this.add.image(bx, by, "t_bench").setScale(2).setOrigin(0.5, 1).setDepth(by); // sized to the 2× cast
-          zone(bx, by - 8, 48, 10);
+      // --- The two quads: a lamp post in each grass corner with a shrub beside
+      //     it, plus a bike rack. Cobblestone ring + striped lawn are terrain;
+      //     these props sit on top, Y-sorted, each with base collision so the
+      //     player can't walk through them.
+      const zone = (x, y, w2, h2) => { const z = this.add.zone(x, y, w2, h2); this.physics.add.existing(z, true); solids.add(z); };
+      (W.quads || []).forEach((QD) => {
+        (QD.shrubs || []).forEach(([c, r]) => {
+          const sx = c * TILE + TILE / 2, sy = r * TILE + TILE - 4;
+          this.add.image(sx, sy, "t_shrub").setScale(1.4).setOrigin(0.5, 1).setDepth(sy);
+          zone(sx, sy - 6, 24, 10);
         });
         (QD.lamps || []).forEach(([c, r]) => {
           const lx = c * TILE + TILE / 2, ly = r * TILE + TILE - 4;
-          this.add.image(lx, ly, "t_lamp").setScale(2).setOrigin(0.5, 1).setDepth(ly);   // lamp posts stand taller than people
+          this.add.image(lx, ly, "t_lamp").setScale(2).setOrigin(0.5, 1).setDepth(ly);   // taller than people
           zone(lx, ly - 4, 10, 8);
         });
-        (QD.trees || []).forEach(([c, r], i) => {
-          const tx = c * TILE + TILE / 2, ty = r * TILE + TILE - 2;
-          this.add.image(tx, ty, "tree" + (i % 2)).setScale(1.5).setOrigin(0.5, 1).setDepth(ty); // match the campus trees
-          zone(tx, ty - 8, 16, 10);
+        (QD.bikeracks || []).forEach(([c, r]) => {
+          const bx = c * TILE + TILE / 2, by = r * TILE + TILE - 4;
+          this.add.image(bx, by, "t_bikerack").setScale(1.6).setOrigin(0.5, 1).setDepth(by);
+          zone(bx, by - 8, 62, 12);
         });
-      }
+      });
 
       // --- player + camera follow across the whole campus
       const sp = (data && data.spawn) || S.lastDoor || W.spawnDefault;

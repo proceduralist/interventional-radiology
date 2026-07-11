@@ -12,7 +12,7 @@
   const D = (typeof module !== "undefined" && module.exports) ? require("./world_data.js") : root.IRWorldData;
   const TILE = 32, COLS = D.COLS, ROWS = D.ROWS, WALL = 2;
   const WPX = COLS * TILE, HPX = ROWS * TILE;
-  const T = { GRASS: 0, GRASS2: 1, ROAD: 2, DASH_H: 3, DASH_V: 4, SIDE: 5, PARK: 6, WATER: 7, QUAD: 8, QUAD2: 9 };
+  const T = { GRASS: 0, GRASS2: 1, ROAD: 2, DASH_H: 3, DASH_V: 4, SIDE: 5, PARK: 6, WATER: 7, QUAD: 8, QUAD2: 9, COBBLE: 10 };
   const SKY = D.skybridges || (D.skybridge ? [D.skybridge] : []);
   const hx = (s) => (typeof s === "string" ? parseInt(s.replace("#", ""), 16) : s);
 
@@ -124,6 +124,7 @@
       if (ch === "w") return T.WATER;
       if (ch === "q") return T.QUAD;      // mowed-lawn stripes (The Quad)
       if (ch === "Q") return T.QUAD2;
+      if (ch === "c") return T.COBBLE;    // cobblestone plaza ringing the quads
       return ((c * 7 + r2 * 13 + ((c * c + r2 * 3) % 5)) % 7) < 3 ? T.GRASS2 : T.GRASS;
     }));
     // solids: building roofs/walls + open water (bridges stay walkable)
@@ -257,7 +258,13 @@
     };
     lawnTile(256, 0x5f9448);
     lawnTile(288, 0x54873f);
-    g.generateTexture("tileset", 320, 32); g.destroy();
+    // Cobblestone plaza ('c', index 10): irregular grey setts over darker grout
+    g.fillStyle(0x625d55, 1); g.fillRect(320, 0, 32, 32);
+    const setts = [[1,1,8,7],[10,1,9,7],[20,1,10,7],[1,9,9,7],[11,9,8,7],[20,9,10,7],[1,17,7,7],[9,17,10,7],[20,17,10,7],[1,25,9,6],[11,25,9,6],[21,25,9,6]];
+    const scol = [0xa8a298, 0x9a948a, 0xb2aca2];
+    setts.forEach((s, i) => { g.fillStyle(scol[i % 3], 1); g.fillRoundedRect(320 + s[0], s[1], s[2], s[3], 2); });
+    speck(320, 6, [0x8f897f, 0xbdb7ad]);
+    g.generateTexture("tileset", 352, 32); g.destroy();
   }
 
   function paintRoof(scene, b) {
@@ -400,6 +407,25 @@
     g.fillStyle(0xf2e2a8, 1); g.fillCircle(6, 5, 4);
     g.fillStyle(0xf2e2a8, 0.25); g.fillCircle(6, 5, 7);
     g.generateTexture("t_lamp", 13, 40); g.destroy();
+    // shrub: a rounded boxwood clump that sits beside each quad lamp
+    g = scene.make.graphics({ add: false });
+    g.fillStyle(0x000000, 0.22); g.fillEllipse(13, 21, 22, 5);
+    g.fillStyle(0x2f5d33, 1); g.fillCircle(9, 14, 8); g.fillCircle(18, 14, 8); g.fillCircle(13, 9, 8);
+    g.fillStyle(0x3b7440, 1); g.fillCircle(8, 11, 5); g.fillCircle(19, 12, 5); g.fillCircle(13, 7, 5);
+    g.fillStyle(0x4f8f52, 0.85); g.fillCircle(11, 8, 3); g.fillCircle(16, 9, 3);
+    g.generateTexture("t_shrub", 26, 24); g.destroy();
+    // bike rack with two parked bikes (rack bar on posts + wheels/frame)
+    g = scene.make.graphics({ add: false });
+    g.fillStyle(0x000000, 0.22); g.fillEllipse(22, 27, 42, 4);
+    g.fillStyle(0x7c828c, 1); g.fillRect(4, 13, 36, 3); g.fillRect(6, 13, 3, 12); g.fillRect(35, 13, 3, 12);
+    const bike = (bx, tint) => {
+      g.lineStyle(2, tint, 1);
+      g.strokeCircle(bx, 20, 5); g.strokeCircle(bx + 13, 20, 5);
+      g.beginPath(); g.moveTo(bx, 20); g.lineTo(bx + 6, 11); g.lineTo(bx + 13, 20); g.lineTo(bx, 20);
+      g.moveTo(bx + 6, 11); g.lineTo(bx + 3, 20); g.strokePath();
+    };
+    bike(7, 0xcf5a4a); bike(22, 0x4a7ad0);
+    g.generateTexture("t_bikerack", 44, 30); g.destroy();
     // skybridges are drawn as graphics rects in drawBuildings (variable size/orientation)
   }
 
@@ -635,7 +661,7 @@
 
   const api = {
     TILE, COLS, ROWS, WALL, WPX, HPX, T,
-    buildings, byId, doorFor, buildGrid, treeList, validate, geo, quad: D.quad || null,
+    buildings, byId, doorFor, buildGrid, treeList, validate, geo, quads: D.quads || [],
     labels: D.labels, helipad: D.helipad, skybridges: SKY, skybridge: SKY[0] || null,
     ensureTextures, drawBuildings, mapSvgInner, paintInterior, shade, mulberry32,
     spawnDefault: { x: (D.spawn.x + 0.5) * TILE, y: (D.spawn.y + 0.5) * TILE },
