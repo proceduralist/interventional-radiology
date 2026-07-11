@@ -582,6 +582,61 @@
   };
 
   // ======================================================================
+  //  MODULAR ROOM NODES — each room is its OWN coordinate region in a larger
+  //  world; the camera follows the player and pans seamlessly between adjacent
+  //  nodes (project spec: same-level rooms = adjacent nodes, seamless panning).
+  //  drawNodeShell paints one room's floor + walls; sides are false=solid wall,
+  //  true=centred doorway, "open"=no wall (handed off to a neighbour).
+  // ======================================================================
+  function drawNodeShell(scene, node, solids, doors, accent, name) {
+    const x = node.x, y = node.y, w = node.w, h = node.h, WT = 12, FH = 44, DW = 72;
+    doors = doors || {};
+    const solid = (sx, sy, sw, sh) => { const z = scene.add.zone(sx, sy, sw, sh); scene.physics.add.existing(z, true); solids.add(z); };
+    scene.add.tileSprite(x, y, w, h, "t_lino").setOrigin(0).setDepth(0);
+    const g = scene.add.graphics().setDepth(2); g.fillStyle(0x1c2331, 1);
+    if (doors.n !== "open") {                                        // 3/4 back wall + accent stripe
+      scene.add.tileSprite(x, y, w, FH, "t_iwall").setOrigin(0).setDepth(1);
+      scene.add.graphics().setDepth(3).fillStyle(accent || 0x41609f, 1).fillRect(x, y + FH - 6, w, 3);
+      solid(x + w / 2, y + (FH - WT) / 2, w, FH);
+    }
+    const hWall = (wy, side) => {
+      if (side === "open") return;
+      if (side === true) { const gl = x + w / 2 - DW / 2, gr = x + w / 2 + DW / 2;
+        g.fillRect(x - WT, wy, gl - (x - WT), WT); g.fillRect(gr, wy, (x + w + WT) - gr, WT);
+        solid((x - WT + gl) / 2, wy + WT / 2, gl - (x - WT), WT); solid((gr + x + w + WT) / 2, wy + WT / 2, (x + w + WT) - gr, WT);
+      } else { g.fillRect(x - WT, wy, w + 2 * WT, WT); solid(x + w / 2, wy + WT / 2, w + 2 * WT, WT); }
+    };
+    const vWall = (wx, side) => {
+      if (side === "open") return;
+      if (side === true) { const gt = y + h / 2 - DW / 2, gb = y + h / 2 + DW / 2;
+        g.fillRect(wx, y - WT, WT, gt - (y - WT)); g.fillRect(wx, gb, WT, (y + h + WT) - gb);
+        solid(wx + WT / 2, (y - WT + gt) / 2, WT, gt - (y - WT)); solid(wx + WT / 2, (gb + y + h + WT) / 2, WT, (y + h + WT) - gb);
+      } else { g.fillRect(wx, y - WT, WT, h + 2 * WT); solid(wx + WT / 2, y + h / 2, WT, h + 2 * WT); }
+    };
+    hWall(y - WT, doors.n); hWall(y + h, doors.s); vWall(x - WT, doors.w); vWall(x + w, doors.e);
+    if (name) label(scene, x + w / 2, y + 22, name, 12, { backgroundColor: "#0e1420cc", padding: { x: 6, y: 2 } }).setDepth(6);
+  }
+  // Camera: follow the player across the whole node world (bounds = union of all
+  // nodes) so it pans smoothly from one room to the next. Tracks the current node
+  // for the on-screen room label.
+  function setupNodeWorld(scene, nodes, pad) {
+    pad = pad || 12;
+    let minx = 1e9, miny = 1e9, maxx = -1e9, maxy = -1e9;
+    nodes.forEach(nd => { minx = Math.min(minx, nd.x); miny = Math.min(miny, nd.y); maxx = Math.max(maxx, nd.x + nd.w); maxy = Math.max(maxy, nd.y + nd.h); });
+    const bx = minx - pad, by = miny - pad, bw = (maxx - minx) + 2 * pad, bh = (maxy - miny) + 2 * pad;
+    scene._nodes = nodes;
+    scene.physics.world.setBounds(bx, by, bw, bh);
+    scene.cameras.main.setBounds(bx, by, bw, bh).startFollow(scene.player, true, 0.12, 0.12);
+  }
+  function updateNodeLabel(scene) {
+    const nodes = scene._nodes, p = scene.player; if (!nodes || !p || !scene._nodeTag) return;
+    const cur = scene._node;
+    if (cur && p.x >= cur.x && p.x <= cur.x + cur.w && p.y >= cur.y && p.y <= cur.y + cur.h) return;
+    const nd = nodes.find(r => p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h);
+    if (nd && nd !== cur) { scene._node = nd; scene._nodeTag.setText(nd.name || ""); }
+  }
+
+  // ======================================================================
   //  LOBBY — generic interior for non-hospital buildings
   // ======================================================================
   const Lobby = {
@@ -593,33 +648,29 @@
       this.busy = false;
       this._npcs = [];                                       // reset per (re)create
       W.ensureTextures(this); W.paintInterior(this);
-      this.cameras.main.setBackgroundColor("#0b1019").setBounds(0, 0, 960, 640);
-      this.physics.world.setBounds(112, 232, 736, 330);
+      this.cameras.main.setBackgroundColor("#0b1019");
 
       const x0 = 96, y0 = 148, rw = 768, rh = 416;
-      this.add.tileSprite(x0, y0 + 82, rw, rh - 82, "t_lino").setOrigin(0).setDepth(0);
-      this.add.tileSprite(x0, y0, rw, 82, "t_iwall").setOrigin(0).setDepth(1);
-      const frame = this.add.graphics().setDepth(2);
-      frame.fillStyle(0x1c2331, 1);
-      frame.fillRect(x0 - 10, y0 - 10, rw + 20, 10); frame.fillRect(x0 - 10, y0 + rh, rw + 20, 12);
-      frame.fillRect(x0 - 10, y0 - 10, 10, rh + 22); frame.fillRect(x0 + rw, y0 - 10, 10, rh + 22);
-      for (let wx = x0 + 40; wx < x0 + rw - 60; wx += 170) {
-        const wg = this.add.graphics().setDepth(2);
-        wg.fillStyle(0x16202e, 1).fillRect(wx, y0 + 18, 30, 40);
-        wg.fillStyle(0x9fc4e0, 0.8).fillRect(wx + 2, y0 + 20, 26, 6);
-        wg.fillStyle(0x6e7789, 1).fillRect(wx - 2, y0 + 58, 34, 3);
-      }
-      this.add.image(x0 + rw - 120, y0 + 14, "t_board").setOrigin(0).setDepth(3);
-
-      label(this, 480, 92, b.name + (upper ? " — Library (2nd floor)" : ""), 17).setDepth(10);
-      if (!upper) label(this, 480, 118, b.lobby.blurb, 11, { wordWrap: { width: 720 } }).setAlpha(0.8).setDepth(10);
-
       const solids = this.physics.add.staticGroup();
       const portals = [];
       const K = roomKit(this, solids);
+      // building name — scroll-fixed so it stays put as the camera pans the nodes
+      this.add.text(480, 12, b.name + (upper ? " — Library (2nd floor)" : ""),
+        { fontFamily: "monospace", fontSize: "15px", color: TEXT, backgroundColor: "#0e1420cc", padding: { x: 8, y: 4 } })
+        .setOrigin(0.5, 0).setScrollFactor(0).setDepth(1e6);
+      this._nodeTag = this.add.text(480, 40, "", { fontFamily: "monospace", fontSize: "12px", color: "#a6c8ff", backgroundColor: "#0e142088", padding: { x: 6, y: 2 } })
+        .setOrigin(0.5, 0).setScrollFactor(0).setDepth(1e6);
 
       if (upper) {
-        // ================= LIBRARY FLOOR (Medical School) ==================
+        // ================= LIBRARY FLOOR (Medical School) — single screen =====
+        this.add.tileSprite(x0, y0 + 82, rw, rh - 82, "t_lino").setOrigin(0).setDepth(0);
+        this.add.tileSprite(x0, y0, rw, 82, "t_iwall").setOrigin(0).setDepth(1);
+        const frame = this.add.graphics().setDepth(2);
+        frame.fillStyle(0x1c2331, 1);
+        frame.fillRect(x0 - 10, y0 - 10, rw + 20, 10); frame.fillRect(x0 - 10, y0 + rh, rw + 20, 12);
+        frame.fillRect(x0 - 10, y0 - 10, 10, rh + 22); frame.fillRect(x0 + rw, y0 - 10, 10, rh + 22);
+        this.cameras.main.setBounds(0, 0, 960, 640);
+        this.physics.world.setBounds(112, 232, 736, 330);
         const shelfRow = (sx, sy, wpx) => {
           const g = this.add.graphics().setDepth(sy + 30);
           g.fillStyle(0x5a4632, 1).fillRect(sx, sy, wpx, 30);
@@ -658,25 +709,26 @@
         return;
       }
 
-      // ================= GROUND FLOOR: themed rooms per sign =================
+      // ================= GROUND FLOOR: themed rooms as modular NODES =========
+      // Each themed room is its OWN coordinate region above a shared hall; the
+      // camera follows the player and pans seamlessly between the nodes (project
+      // spec: same-level rooms = adjacent nodes). Content is authored in each
+      // room's own local space (rx/top), reused verbatim from the old layout.
       const pois = (b.lobby.pois || []).slice();
       const corridorPoi = pois.find(p => /corridor to umass/i.test(p.label));
       const libraryPoi = pois.find(p => /^library/i.test(p.label));
       const roomPois = pois.filter(p => p !== corridorPoi && p !== libraryPoi);
 
-      // Themed rooms tile the hall EDGE-TO-EDGE as adjacent rooms sharing
-      // partition walls (no gaps, no moat) and attach to the north wall; each
-      // opens south into the shared lobby hall — the hub. No nested boxes.
-      const n = roomPois.length;
-      const RH2 = 210, RY = y0 + 82;
-      const RW2 = n ? Math.floor((rw - 24) / n) : 0;
-      const startX = x0 + 12;
+      const n = Math.max(1, roomPois.length);
+      const RW = 780, ROOMH = 380, HALLH = 300, hallY = ROOMH, worldW = n * RW;
+      const nodes = [];
 
       roomPois.forEach((p, i) => {
-        const rx = startX + i * RW2;
         const theme = poiTheme(p);
-        K.procRoom(rx, RY, RW2, RH2, p.label.length > 20 ? p.label.slice(0, 19) + "…" : p.label, THEME_ACCENT[theme]);
-        const cx = rx + RW2 / 2, top = RY + FACE;
+        const node = { id: "room" + i, name: p.label, x: i * RW, y: 0, w: RW, h: ROOMH };
+        nodes.push(node);
+        drawNodeShell(this, node, solids, { s: true }, THEME_ACCENT[theme], p.label.length > 24 ? p.label.slice(0, 23) + "…" : p.label);
+        const rx = node.x, RW2 = RW, RY = node.y, top = node.y + FACE, cx = rx + RW2 / 2;
         const say = (msg) => () => { this.busy = false; root.IRUI.toast(msg, 3400); };
 
         if (theme === "auditorium") {
@@ -750,45 +802,45 @@
         }
       });
 
-      // MSB: stairs up to the library floor
+      // ---- shared HALL node (below, spans every room) — the hub -------------
+      const hall = { id: "hall", name: b.name + " — Lobby", x: 0, y: hallY, w: worldW, h: HALLH };
+      nodes.push(hall);
+      drawNodeShell(this, hall, solids, { n: roomPois.length ? "open" : false }, 0x41609f, null);
+      const hcx = worldW / 2;
+      this.add.image(hcx - 64, hallY + 78, "t_desk").setOrigin(0).setDepth(hallY + 140);
+      const deskBody = this.add.zone(hcx, hallY + 118, 128, 42); this.physics.add.existing(deskBody, true); solids.add(deskBody);
+      npcIdle(this, hcx, hallY + 82, "senior", "d");                                 // front desk
+      [[26, hallY + 44], [worldW - 26, hallY + 44], [26, hallY + HALLH - 18], [worldW - 26, hallY + HALLH - 18]]
+        .forEach(([px, py]) => this.add.image(px, py, "t_plant").setOrigin(0.5, 1).setDepth(py));
+      npcPatrol(this, hcx - 180, hallY + 210, "visitor", 360, 0, 10000);
+      if (Math.random() < 0.6) npcSeated(this, hcx - 260, hallY + 150, rndChar(), "r");
+      // exit door (south wall of the hall) → campus
+      const door = this.add.graphics().setDepth(hallY + HALLH + 4);
+      door.fillStyle(0x20262e, 1).fillRect(hcx - 36, hallY + HALLH - 6, 72, 16);
+      door.fillStyle(0x2a4a66, 1).fillRect(hcx - 32, hallY + HALLH - 3, 30, 12).fillRect(hcx + 2, hallY + HALLH - 3, 30, 12);
+      portals.push({ x: hcx, y: hallY + HALLH, w: 90, h: 50, label: "Exit to campus", onEnter: () => this.scene.start("Overworld") });
+      // MSB: stairs up to the library (hard gateway) — west end of the hall
       if (libraryPoi) {
-        this.add.image(x0 + 24, y0 + 88, "t_stairs").setOrigin(0).setDepth(3);
-        portals.push({ x: x0 + 56, y: y0 + 196, w: 64, h: 44, label: "Stairs up — Library", onEnter: () => this.scene.restart({ id: b.id, floor: "library" }) });
+        this.add.image(20, hallY + 24, "t_stairs").setOrigin(0).setDepth(hallY + 60);
+        portals.push({ x: 56, y: hallY + 130, w: 72, h: 60, label: "Stairs up — Library", onEnter: () => this.scene.restart({ id: b.id, floor: "library" }) });
       }
-      // MSB: the corridor to UMass Memorial — southeast doors straight into the hospital
+      // MSB: corridor to UMass Memorial (hard gateway) — east end of the hall
       if (corridorPoi) {
-        const dg = this.add.graphics().setDepth(3);
-        dg.fillStyle(0x20262e, 1).fillRect(x0 + rw - 96, y0 + rh - 64, 84, 56);
-        dg.fillStyle(0x2a4a66, 1).fillRect(x0 + rw - 90, y0 + rh - 58, 34, 44).fillRect(x0 + rw - 50, y0 + rh - 58, 34, 44);
-        label(this, x0 + rw - 54, y0 + rh - 74, "TO UMASS MEMORIAL →", 9).setAlpha(0.8).setDepth(4);
-        portals.push({ x: x0 + rw - 54, y: y0 + rh - 36, w: 100, h: 60, label: "Corridor to UMass Memorial",
-          onEnter: () => { S.lastDoor = null; this.scene.start("Hospital", { floor: "1" }); } });
+        const dg = this.add.graphics().setDepth(hallY + 60);
+        dg.fillStyle(0x20262e, 1).fillRect(worldW - 92, hallY + 24, 84, 56);
+        dg.fillStyle(0x2a4a66, 1).fillRect(worldW - 86, hallY + 30, 34, 44).fillRect(worldW - 46, hallY + 30, 34, 44);
+        label(this, worldW - 50, hallY + 12, "TO UMASS MEMORIAL →", 9).setAlpha(0.8).setDepth(hallY + 62);
+        portals.push({ x: worldW - 50, y: hallY + 88, w: 110, h: 60, label: "Corridor to UMass Memorial", onEnter: () => { S.lastDoor = null; this.scene.start("Hospital", { floor: "1" }); } });
       }
 
-      // hall furniture + ambient foot traffic
-      const deskX = x0 + rw / 2 - 64, deskY = y0 + 316;
-      this.add.image(deskX, deskY, "t_desk").setOrigin(0).setDepth(deskY + 62);
-      const deskBody = this.add.zone(deskX + 64, deskY + 40, 128, 42);
-      this.physics.add.existing(deskBody, true); solids.add(deskBody);
-      npcIdle(this, deskX + 64, deskY + 4, "senior", "d");                        // front desk
-      [[x0 + 22, y0 + 96], [x0 + rw - 46, y0 + 96], [x0 + 22, y0 + rh - 44], [x0 + rw - 46, y0 + rh - 44]].forEach(([px, py]) => {
-        this.add.image(px, py, "t_plant").setOrigin(0, 1).setDepth(py);
-      });
-      npcPatrol(this, x0 + 130, y0 + 370, "visitor", rw - 300, 0, 10000);
-      if (Math.random() < 0.6) npcSeated(this, x0 + 60, y0 + 330, rndChar(), "r");
-
-      const door = this.add.graphics().setDepth(3);
-      door.fillStyle(0x20262e, 1).fillRect(444, y0 + rh - 8, 72, 20);
-      door.fillStyle(0x2a4a66, 1).fillRect(448, y0 + rh - 5, 30, 14).fillRect(482, y0 + rh - 5, 30, 14);
-      portals.push({ x: 480, y: y0 + rh, w: 90, h: 50, label: "Exit to campus", onEnter: () => this.scene.start("Overworld") });
-
-      spawnPlayer(this, 480, y0 + rh - 70);
+      spawnPlayer(this, hcx, hallY + HALLH - 70);
       this.physics.add.collider(this.player, solids);
       wireNpcPhysics(this, solids);
-      hud(this, "[E] interact · exit at the bottom door");
+      setupNodeWorld(this, nodes);
+      hud(this, "[E] interact · walk room to room · exit south");
       makePortals(this, portals);
     },
-    update() { movePlayer(this, 210); updatePortals(this); updateNpcs(this); },
+    update() { movePlayer(this, 210); updatePortals(this); updateNpcs(this); updateNodeLabel(this); },
   };
 
   // ======================================================================
