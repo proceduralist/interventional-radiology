@@ -268,11 +268,19 @@
     return scene.add.image(x, y, "t_chair").setScale(CHAIR_SCALE).setOrigin(0.5, 1).setDepth(y);
   }
   function npcSeated(scene, x, y, role, dir, solids) {
-    // chair on the floor BEHIND the sitter; the sitter is lowered onto the seat
-    // and drawn IN FRONT, so they read as sitting IN the chair (not behind it).
-    scene.add.image(x, y + 4, "t_chair").setScale(CHAIR_SCALE).setOrigin(0.5, 1).setDepth(y);
-    const s = npcIdle(scene, x, y - 10, role, dir || "d");
-    s.setDepth(y + 1);
+    // The cast sheet is walk-only (no sitting pose), so we fake a convincing sit:
+    // the person is drawn BEHIND the chair with their lower legs/feet cropped at
+    // the hip, and the chair (seat + back) is drawn IN FRONT — head and shoulders
+    // rise above the chair back while the flat crop line hides behind the seat, so
+    // nobody appears to stand on the chair. Depth stays feet-based (person at the
+    // chair-floor y, chair a hair in front) so the player still Y-sorts correctly.
+    const s = npcIdle(scene, x, y - 6, role, dir || "d");
+    if (s.setCrop) {
+      if (s.texture && s.texture.key === "npcsheet") s.setCrop(0, 0, 80, 92);   // drop shins + feet (body is frame-y 16–115)
+      else s.setCrop(0, 0, (s.frame && s.frame.width) || 20, Math.round(((s.frame && s.frame.height) || 28) * 0.66));
+    }
+    s.setDepth(y);
+    scene.add.image(x, y, "t_chair").setScale(CHAIR_SCALE).setOrigin(0.5, 1).setDepth(y + 1);
     if (solids) { const z = scene.add.zone(x, y - 6, 26, 18); scene.physics.add.existing(z, true); solids.add(z); }
     return s;
   }
