@@ -13,8 +13,8 @@ NORTH_ROAD = 9       # horizontal, full width, 2 tiles N of Sherman/MedSchool (t
 SOUTH_ROAD = 32      # horizontal, splits hospital/Lazare (N) from ACC (S)
 ROUTE9     = 50      # main E-W road; bridges over the water
 PLANTATION = 2       # vertical, full height, W of the buildings (x>=5)
-LAKE_AVE   = 51      # vertical, full height, well E of the buildings (room for helipad + plant)
-WATER      = [54, 55, 56]   # column ~2 E of Lake Ave, full N-S
+LAKE_AVE   = 49      # vertical, full height; runs ALONG the lake's west shore (moved W so the wider lake still has a clean 3-wide road + shore)
+WATER      = [52, 53, 54, 55, 56]   # Lake Quinsigamond — widened 2 tiles W (Ryan), full N-S, one shore sidewalk (col 51) W of it
 HROADS = [NORTH_ROAD, SOUTH_ROAD, ROUTE9]
 VROADS = [PLANTATION, LAKE_AVE]
 ROAD_W = 3                                   # streets are 3 tiles wide (Ryan 2026-07-10)
@@ -56,8 +56,9 @@ def build_terrain():
         for r in HROAD_ROWS: g[r][c] = "r"
     for r in range(ROWS):
         for c in WATER: g[r][c] = "w"
-    for r in HROAD_ROWS:                   # the full 3-wide road bridges the water
-        for c in WATER: g[r][c] = "b"
+    for r in span(ROUTE9):                  # ONLY Route 9 bridges the lake (Ryan); the N/S roads dead-end at the shore
+        if 0 <= r < ROWS:
+            for c in WATER: g[r][c] = "b"
     for b in BLD.values():                 # clear grass under roofs
         for i in range(b["h"]):
             for j in range(b["w"]):

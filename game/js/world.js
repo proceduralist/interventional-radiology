@@ -480,11 +480,45 @@
     }
   }
 
+  // A realistic road bridge carrying Route 9 across Lake Quinsigamond: concrete
+  // deck (expansion joints + centre line), guard-rail parapets on both long
+  // edges, and support piers standing in the water N and S of the span. Drawn at
+  // a low depth so the player and cars ride OVER it.
+  function drawRoadBridge(g, shadows, x, y, w, h) {
+    const deck = 0x777c82, deckHi = 0x8d939b, deckLo = 0x565b62,
+          rail = 0x9aa1a9, railLo = 0x3a3f46, post = 0x6c727a,
+          pier = 0x454a51, pierLo = 0x2b2f35, line = 0xd8c34a;
+    shadows.fillStyle(0x000000, 0.22).fillRect(x + 4, y + h, w - 8, 10);          // shadow on the water (S)
+    for (let f = 0.2; f < 0.99; f += 0.3) {                                       // support piers in the water
+      const px = x + w * f - 5;
+      g.fillStyle(pier, 1).fillRect(px, y - 12, 10, 14); g.fillStyle(pierLo, 1).fillRect(px, y - 2, 10, 3);
+      g.fillStyle(pier, 1).fillRect(px, y + h - 2, 10, 16); g.fillStyle(pierLo, 1).fillRect(px, y + h + 12, 10, 3);
+    }
+    g.fillStyle(deck, 1).fillRect(x, y, w, h);                                    // concrete deck slab
+    g.fillStyle(deckHi, 1).fillRect(x, y + 4, w, 3);
+    g.fillStyle(deckLo, 1).fillRect(x, y + h - 7, w, 3);
+    g.fillStyle(deckLo, 1); for (let jx = x + 30; jx < x + w - 6; jx += 44) g.fillRect(jx, y + 8, 2, h - 16);  // expansion joints
+    g.fillStyle(line, 0.85); for (let mx = x + 10; mx < x + w - 8; mx += 26) g.fillRect(mx, y + h / 2 - 1, 14, 3);  // centre line
+    const parapet = (ry) => {                                                     // guard-rail (top rail + posts)
+      g.fillStyle(post, 1); for (let pxp = x + 5; pxp < x + w - 3; pxp += 15) g.fillRect(pxp, ry - 5, 3, 7);
+      g.fillStyle(rail, 1).fillRect(x, ry - 6, w, 4);
+      g.fillStyle(railLo, 1).fillRect(x, ry - 2, w, 2);
+    };
+    parapet(y + 6); parapet(y + h);                                              // north + south parapets
+  }
+
   // ----- overworld renderer --------------------------------------------------
   function drawBuildings(scene, solids) {
     const gg = geo();
     const shadows = scene.add.graphics().setDepth(2);
     const portals = [];
+    // realistic road bridge where Route 9 crosses the lake (drawn under player/cars)
+    const RB = D.roads;
+    if (RB && RB.water && RB.water.length && RB.route9 != null) {
+      const bg = scene.add.graphics().setDepth(3);
+      const w0 = RB.water[0], w1 = RB.water[RB.water.length - 1];
+      drawRoadBridge(bg, shadows, w0 * TILE - 8, (RB.route9 - 1) * TILE, (w1 - w0 + 1) * TILE + 16, 3 * TILE);
+    }
     buildings.forEach(b => {
       scene.add.image(b.x * TILE, b.y * TILE, paintRoof(scene, b)).setOrigin(0).setDepth(6);
       gg.strips[b.id].forEach((s, n) => {
@@ -533,8 +567,8 @@
     const gg = geo();
     const kindFill = (b) => b.enter ? (b.kind === "hospital" ? "#a84a56" : b.kind === "clinical" ? "#3a7a8c" : "#41609f") : "#39404d";
     let s = '<rect x="0" y="0" width="' + COLS + '" height="' + ROWS + '" fill="#152618"/>';
-    const tfill = { r: "#313947", s: "#8a9199", p: "#232b38", w: "#24486b" };
-    for (const ch of ["p", "w", "r", "s"]) {
+    const tfill = { r: "#313947", s: "#8a9199", p: "#232b38", w: "#24486b", b: "#3a4657" };
+    for (const ch of ["p", "w", "r", "s", "b"]) {
       for (let r2 = 0; r2 < ROWS; r2++) {
         let c = 0;
         while (c < COLS) {

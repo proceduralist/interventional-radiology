@@ -147,8 +147,9 @@
       if (stop) { c.body.setVelocity(0, 0); if (honk && now >= (c.honkCd || 0)) { carHonk(scene, c); c.honkCd = now + 1600; } }
       else c.body.setVelocity(c.horiz ? c.dir * c.cruise : 0, c.horiz ? 0 : c.dir * c.cruise);
       c.setDepth(c.y);
-      if (c.horiz && c.dir > 0 && c.x > W.WPX + M) c.x = -M;
-      else if (c.horiz && c.dir < 0 && c.x < -M) c.x = W.WPX + M;
+      const rb = c.xMax != null ? c.xMax : W.WPX;                 // bounded cars wrap at the lake shore, not the map edge
+      if (c.horiz && c.dir > 0 && c.x > (c.xMax != null ? rb : rb + M)) c.x = -M;
+      else if (c.horiz && c.dir < 0 && c.x < -M) c.x = (c.xMax != null ? rb : rb + M);
       else if (!c.horiz && c.dir > 0 && c.y > W.HPX + M) c.y = -M;
       else if (!c.horiz && c.dir < 0 && c.y < -M) c.y = W.HPX + M;
     }
@@ -479,18 +480,28 @@
       if (RD) {
         const CAR_TINTS = [0xd05a4a, 0x4a7ad0, 0xd8b84a, 0x9aa4b0, 0x4aa06a, 0xcfd4da, 0x8a6ad0];
         const lane = 0.62 * TILE;              // right-hand traffic, one lane each way
-        const mkCar = (horiz, center, dir, slot) => {
+        // rightPx (horizontal cars): east travel limit. North/South roads now
+        // dead-end at the lake, so their cars turn back at the shore instead of
+        // driving over open water; Route 9 keeps rightPx null → crosses the bridge.
+        const mkCar = (horiz, center, dir, slot, rightPx) => {
           const tint = CAR_TINTS[(Math.random() * CAR_TINTS.length) | 0];
           let x, y;
-          if (horiz) { y = center * TILE + TILE / 2 + (dir > 0 ? lane : -lane); x = dir > 0 ? (-140 - slot * 280) : (W.WPX + 140 + slot * 280); }
-          else { x = center * TILE + TILE / 2 + (dir > 0 ? -lane : lane); y = dir > 0 ? (-160 - slot * 320) : (W.HPX + 160 + slot * 320); }
+          if (horiz) {
+            const rb = rightPx != null ? rightPx : W.WPX;
+            y = center * TILE + TILE / 2 + (dir > 0 ? lane : -lane);
+            x = dir > 0 ? (-140 - slot * 280)
+                        : (rightPx != null ? (rb - 40 - slot * 280) : (W.WPX + 140 + slot * 280));
+          } else { x = center * TILE + TILE / 2 + (dir > 0 ? -lane : lane); y = dir > 0 ? (-160 - slot * 320) : (W.HPX + 160 + slot * 320); }
           const c = this.physics.add.image(x, y, horiz ? "t_car_h" : "t_car_v").setScale(2).setTint(tint).setDepth(y);
           if (horiz) c.setFlipX(dir < 0); else c.setFlipY(dir < 0);
           c.body.setImmovable(true); c.body.pushable = false; c.body.setAllowGravity(false);
           c.horiz = horiz; c.dir = dir; c.cruise = 72 + Math.random() * 46; c.honkCd = 0;
+          if (horiz && rightPx != null) c.xMax = rightPx;
           this._cars.push(c);
         };
-        [RD.north, RD.south, RD.route9].forEach(cy => [1, -1].forEach(dir => { mkCar(true, cy, dir, 0); mkCar(true, cy, dir, 1); }));
+        const shoreX = (RD.water && RD.water.length ? RD.water[0] : W.COLS) * TILE - 4;  // west edge of the lake
+        [RD.north, RD.south].forEach(cy => [1, -1].forEach(dir => { mkCar(true, cy, dir, 0, shoreX); mkCar(true, cy, dir, 1, shoreX); }));
+        [1, -1].forEach(dir => { mkCar(true, RD.route9, dir, 0); mkCar(true, RD.route9, dir, 1); });  // Route 9 crosses the bridge, full width
         [RD.plantation, RD.lakeAve].forEach(cx => [1, -1].forEach(dir => mkCar(false, cx, dir, 0)));
       }
 

@@ -30,10 +30,14 @@ ok("the campus buildings are present with footprints", () => {
   });
 });
 
-ok("horizontal roads are 3 TILES WIDE, full width, bridging the water", () => {
+ok("horizontal roads are 3 TILES WIDE and full width (only Route 9 bridges the lake)", () => {
+  const inLake = (c) => R.water.indexOf(c) !== -1;
   [R.north, R.south, R.route9].forEach(y => {
     [y - 1, y, y + 1].forEach(yy => {
-      for (let c = 0; c < W.COLS; c++) assert.strictEqual(g.grid[yy][c], ROAD, "road y=" + yy + " c=" + c + " not road");
+      for (let c = 0; c < W.COLS; c++) {
+        if (inLake(c) && y !== R.route9) assert.strictEqual(g.grid[yy][c], WATER, "N/S road stops at the lake (y=" + yy + " c=" + c + ")");
+        else assert.strictEqual(g.grid[yy][c], ROAD, "road y=" + yy + " c=" + c + " not road");
+      }
     });
   });
   assert.strictEqual(R.width, 3, "roads meta declares the 3-tile width");
@@ -50,21 +54,29 @@ ok("vertical roads are 3 TILES WIDE: Plantation W of the buildings, Lake Ave E, 
 });
 
 ok("no road overlaps any building footprint or its wall face", () => {
-  const solidAt = (c, r) => g.solid[r][c];
-  [R.north, R.south, R.route9].forEach(y => { for (let c = 0; c < W.COLS; c++) assert.ok(!solidAt(c, y) || g.grid[y][c] === ROAD, "hroad y=" + y + " blocked"); });
-  // roads themselves are never solid
-  [R.north, R.south, R.route9].forEach(y => { for (let c = 0; c < W.COLS; c++) assert.ok(g.grid[y][c] !== WATER, "hroad hits open water"); });
+  // the only solid a road tile may coincide with is the lake (the N/S roads end there)
+  [R.north, R.south, R.route9].forEach(y => {
+    [y - 1, y, y + 1].forEach(yy => {
+      for (let c = 0; c < W.COLS; c++) assert.ok(!g.solid[yy][c] || g.grid[yy][c] === WATER, "road y=" + yy + " c=" + c + " over a building");
+    });
+  });
 });
 
-ok("water is a full-height column E of Lake Ave; impassable except at the 3-wide bridges", () => {
+ok("water is a full-height column E of Lake Ave; impassable except at the single Route 9 bridge", () => {
   R.water.forEach(x => {
     assert.ok(x > R.lakeAve, "water east of Lake Ave");
     for (let r = 0; r < W.ROWS; r++) {
-      const bridge = [R.north, R.south, R.route9].some(y => Math.abs(r - y) <= 1);
+      const bridge = Math.abs(r - R.route9) <= 1;      // ONLY Route 9 bridges the lake now (Ryan)
       if (bridge) { assert.strictEqual(g.grid[r][x], ROAD, "bridge is road"); assert.ok(!g.solid[r][x], "bridge walkable"); }
       else { assert.strictEqual(g.grid[r][x], WATER, "open water tile"); assert.ok(g.solid[r][x], "open water impassable"); }
     }
   });
+});
+
+ok("the lake is widened 2 tiles W (5 columns) with exactly one bridge", () => {
+  assert.strictEqual(R.water.length, 5, "lake is 5 columns wide");
+  const bridged = [R.north, R.south, R.route9].filter(y => R.water.every(x => g.grid[y][x] === ROAD));
+  assert.deepStrictEqual(bridged, [R.route9], "only Route 9 bridges the lake");
 });
 
 ok("building relationships hold (Memorial abuts MedSchool SE, Sherman W, ACC S of south road)", () => {
