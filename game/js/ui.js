@@ -969,5 +969,122 @@
     },
   };
 
-  root.IRUI = { overlay, clear, toast, Auth, EMR, Preop, LocationPick, Angio, Debrief, Shop, SimLab, CampusMap, Elevator, Conference, CasePick, CallRoom, Lounge, Bag };
+  // --- Character creator --------------------------------------------------
+  // First-play look builder (also the floor-6 wardrobe mirror). Mockup layout:
+  // option controls on the left; live body + portrait preview and Start on the
+  // right. Renders with the SAME appearance ops the in-world sprite uses, so
+  // what you build is what you play.
+  const CharCreator = {
+    show(opts) {
+      opts = opts || {};
+      const A = root.IRAppearance;
+      let app = A.normalize(opts.appearance);
+
+      const card = el("div", "card charcreate");
+      card.appendChild(el("h2", null, opts.title || "Create your resident"));
+      card.appendChild(el("p", "sub", opts.subtitle ||
+        "This is you for the rest of training — tweak the look, then head to the wards. You can change it any time at the mirror in your call room."));
+
+      const cols = el("div", "cc-cols");
+      const left = el("div", "cc-left");
+      const right = el("div", "cc-right");
+      cols.append(left, right);
+
+      // option rows (segmented chips; skin tone shows colour swatches)
+      const OPT = A.OPTIONS;
+      const ROWS = [
+        ["sex", "Resident", OPT.sex, false],
+        ["skin", "Skin tone", OPT.skin, true],
+        ["hair", "Hair colour", OPT.hair, false],
+        ["beard", "Beard", OPT.beard, false],
+        ["glasses", "Glasses", OPT.glasses, false],
+        ["outfit", "Outfit", OPT.outfit, false],
+      ];
+      const segs = {};
+      const idxOf = (key) => (key === "glasses" || key === "beard") ? (app[key] ? 1 : 0) : app[key];
+      ROWS.forEach(function (r) {
+        const key = r[0], label = r[1], choices = r[2], isColor = r[3];
+        const row = el("div", "cc-opt");
+        row.appendChild(el("label", null, label));
+        const seg = el("div", "cc-seg");
+        choices.forEach(function (c, i) {
+          const b = el("button", "cc-chip" + (isColor ? " cc-swatch" : ""));
+          if (isColor) { b.style.background = c; b.title = "Tone " + (i + 1); }
+          else b.textContent = c;
+          b.onclick = function () { if (key === "glasses" || key === "beard") app[key] = (i === 1); else app[key] = i; render(); };
+          seg.appendChild(b);
+        });
+        segs[key] = seg;
+        row.appendChild(seg);
+        left.appendChild(row);
+      });
+
+      // name + randomise
+      const namebox = el("div", "cc-namebox");
+      namebox.appendChild(el("label", null, "Name"));
+      const nameInput = el("input"); nameInput.type = "text"; nameInput.maxLength = 24;
+      nameInput.value = opts.name || app.name || "";
+      nameInput.placeholder = "Scrubby Resident";
+      const bRand = el("button", "btn ghost cc-rand", "🎲 Surprise me");
+      bRand.onclick = function () {
+        const ri = (n) => Math.floor(Math.random() * n);
+        app = A.normalize({ name: nameInput.value, sex: ri(2), skin: ri(A.SKIN.length),
+          hair: ri(A.HAIR.length), outfit: ri(A.OUTFITS.length), glasses: Math.random() < 0.5, beard: Math.random() < 0.5 });
+        render();
+      };
+      namebox.append(nameInput, bRand);
+
+      // live preview: full-body sprite + head-and-shoulders portrait
+      const preview = el("div", "cc-preview");
+      const bodyC = document.createElement("canvas"); bodyC.className = "cc-canv"; bodyC.width = A.BODY_W * 5; bodyC.height = A.BODY_H * 5;
+      const faceC = document.createElement("canvas"); faceC.className = "cc-canv cc-face"; faceC.width = A.PORTRAIT_W * 4; faceC.height = A.PORTRAIT_H * 4;
+      preview.append(bodyC, faceC);
+
+      const bStart = el("button", "btn primary cc-start", opts.startLabel || "Start ▶");
+      bStart.onclick = function () {
+        const out = A.normalize(Object.assign({}, app, { name: (nameInput.value || "").trim() }));
+        if (opts.onStart) opts.onStart(out);
+      };
+
+      right.append(namebox, preview, bStart);
+      if (opts.onCancel) {
+        const bCancel = el("button", "btn ghost cc-cancel", "Cancel");
+        bCancel.onclick = function () { document.removeEventListener("keydown", onKey); opts.onCancel(); };
+        right.appendChild(bCancel);
+        var onKey = function (e) { if (e.key === "Escape") { document.removeEventListener("keydown", onKey); opts.onCancel(); } };
+        document.addEventListener("keydown", onKey);
+      }
+
+      card.appendChild(cols);
+      show(card);
+
+      function paintCanvas(canvas, ops, scale) {
+        let ctx = null;
+        try { ctx = canvas.getContext && canvas.getContext("2d"); } catch (e) { ctx = null; }
+        if (!ctx) return; // jsdom without node-canvas → preview is a no-op (still testable)
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        for (let i = 0; i < ops.length; i++) {
+          const o = ops[i];
+          ctx.globalAlpha = o.a == null ? 1 : o.a;
+          ctx.fillStyle = A.hexStr(o.c);
+          if (o.shape === "ellipse") { ctx.beginPath(); ctx.ellipse(o.x * scale, o.y * scale, (o.w / 2) * scale, (o.h / 2) * scale, 0, 0, Math.PI * 2); ctx.fill(); }
+          else ctx.fillRect(Math.round(o.x * scale), Math.round(o.y * scale), Math.ceil(o.w * scale), Math.ceil(o.h * scale));
+        }
+        ctx.globalAlpha = 1;
+      }
+      function render() {
+        app = A.normalize(app);
+        Object.keys(segs).forEach(function (key) {
+          const sel = idxOf(key);
+          Array.prototype.forEach.call(segs[key].children, function (b, i) { b.classList.toggle("on", i === sel); });
+        });
+        paintCanvas(faceC, A.portraitOps(app), 4);
+        paintCanvas(bodyC, A.bodyOps(app), 5);
+      }
+      render();
+      return { render: render, card: card, get: function () { return A.normalize(Object.assign({}, app, { name: (nameInput.value || "").trim() })); } };
+    },
+  };
+
+  root.IRUI = { overlay, clear, toast, Auth, EMR, Preop, LocationPick, Angio, Debrief, Shop, SimLab, CampusMap, Elevator, Conference, CasePick, CallRoom, Lounge, Bag, CharCreator };
 })(window);

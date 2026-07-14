@@ -262,3 +262,29 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--text);
   padding:8px 10px;font-size:12px;line-height:1.45;box-shadow:0 3px 10px #0008}
 .attn.mad .attn-bubble{background:#f2dcd6;border:1px solid #b05a4a}
 @keyframes attn-in{from{transform:translateX(-46px);opacity:0}to{transform:none;opacity:1}}
+
+/* character creator / wardrobe mirror */
+.charcreate{max-width:780px}
+.cc-cols{display:grid;grid-template-columns:1fr 300px;gap:18px;margin-top:6px}
+@media(max-width:680px){.cc-cols{grid-template-columns:1fr}}
+.cc-left{display:grid;gap:12px;align-content:start}
+.cc-opt{display:grid;gap:6px}
+.cc-opt>label,.cc-namebox>label{font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--accent);font-weight:700}
+.cc-seg{display:flex;flex-wrap:wrap;gap:6px}
+.cc-chip{background:var(--bg2);color:var(--text);border:1px solid var(--line);border-radius:8px;
+  padding:7px 12px;font-size:13px;font-weight:600;cursor:pointer;transition:.12s}
+.cc-chip:hover{border-color:var(--accent);transform:translateY(-1px)}
+.cc-chip.on{background:var(--accent);color:#10222d;border-color:var(--accent)}
+.cc-swatch{width:30px;height:30px;padding:0;border-radius:50%}
+.cc-swatch.on{box-shadow:0 0 0 2px var(--panel),0 0 0 4px var(--accent);border-color:transparent;transform:none}
+.cc-right{display:flex;flex-direction:column;gap:12px}
+.cc-namebox{display:grid;gap:6px}
+.cc-namebox input{background:var(--bg2);border:1px solid var(--line);border-radius:8px;color:var(--text);padding:10px;font-size:14px}
+.cc-rand{align-self:start;font-size:12px;padding:6px 10px}
+.cc-preview{display:flex;align-items:flex-end;justify-content:center;gap:14px;
+  background:radial-gradient(140px 130px at 55% 25%,#1c3a4b,#0b1620);
+  border:1px solid var(--line);border-radius:12px;padding:16px 10px;min-height:210px}
+.cc-canv{image-rendering:pixelated;image-rendering:crisp-edges}
+.cc-canv.cc-face{border:1px solid var(--line);border-radius:8px;background:#0e202b}
+.cc-start{width:100%;text-align:center;font-size:15px;padding:12px}
+.cc-cancel{width:100%;text-align:center}

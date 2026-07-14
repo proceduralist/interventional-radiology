@@ -343,18 +343,33 @@
     return key;
   }
 
+  // Paint the player sprite (t_player) from the saved appearance. Kept separate
+  // from paintSprites so it can be re-run whenever the look changes (character
+  // creator / wardrobe mirror) — it removes and regenerates the texture.
+  function drawOps(g, ops) {
+    for (let i = 0; i < ops.length; i++) {
+      const o = ops[i];
+      g.fillStyle(o.c, o.a == null ? 1 : o.a);
+      if (o.shape === "ellipse") g.fillEllipse(o.x, o.y, o.w, o.h);
+      else g.fillRect(o.x, o.y, o.w, o.h);
+    }
+  }
+  function currentAppearance() {
+    const A = root.IRAppearance, st = root.IRState;
+    return (st && st.save && st.save.appearance) || (A && A.DEFAULT) || {};
+  }
+  function paintPlayer(scene, app) {
+    const A = root.IRAppearance;
+    if (!A) return; // module missing → nothing to paint (browser-only path anyway)
+    if (scene.textures.exists("t_player")) scene.textures.remove("t_player");
+    const g = scene.make.graphics({ add: false });
+    drawOps(g, A.bodyOps(app || currentAppearance()));
+    g.generateTexture("t_player", A.BODY_W, A.BODY_H); g.destroy();
+  }
+
   function paintSprites(scene) {
-    if (scene.textures.exists("t_player")) return;
-    let g = scene.make.graphics({ add: false });
-    g.fillStyle(0x000000, 0.28); g.fillEllipse(10, 26, 15, 5);
-    g.fillStyle(0x2c2620, 1); g.fillRect(5, 0, 10, 5);
-    g.fillStyle(0xd9a886, 1); g.fillRect(6, 3, 8, 7); g.fillStyle(0x2c2620, 1); g.fillRect(5, 2, 10, 2);
-    g.fillStyle(0x2c4a6e, 1); g.fillRect(4, 10, 12, 9); g.fillRect(2, 11, 2, 6); g.fillRect(16, 11, 2, 6);
-    g.fillStyle(0xd9a886, 1); g.fillRect(2, 17, 2, 2); g.fillRect(16, 17, 2, 2);
-    g.fillStyle(0xe8e4d8, 1); g.fillRect(12, 12, 2, 3);
-    g.fillStyle(0x223a55, 1); g.fillRect(5, 19, 4, 6); g.fillRect(11, 19, 4, 6);
-    g.fillStyle(0x1a1a1c, 1); g.fillRect(5, 25, 4, 2); g.fillRect(11, 25, 4, 2);
-    g.generateTexture("t_player", 20, 28); g.destroy();
+    if (scene.textures.exists("tree0")) return; // one-time props (the player is painted separately)
+    let g;
     for (let v = 0; v < 2; v++) {
       g = scene.make.graphics({ add: false });
       const c1 = v ? 0x2c5a3a : 0x2f5d33, c2 = v ? 0x3a7449 : 0x3b7440, c3 = v ? 0x4f9260 : 0x4f8f52;
@@ -705,6 +720,7 @@
   function ensureTextures(scene) {
     if (!scene.textures.exists("tileset")) paintTileset(scene);
     paintSprites(scene);
+    paintPlayer(scene);            // always (re)build the player from the saved look
     // roofs/strips are painted lazily by drawBuildings
   }
 
@@ -712,7 +728,7 @@
     TILE, COLS, ROWS, WALL, WPX, HPX, T,
     buildings, byId, doorFor, buildGrid, treeList, validate, geo, quads: D.quads || [],
     labels: D.labels, helipad: D.helipad, skybridges: SKY, skybridge: SKY[0] || null,
-    ensureTextures, drawBuildings, mapSvgInner, paintInterior, shade, mulberry32,
+    ensureTextures, paintPlayer, drawBuildings, mapSvgInner, paintInterior, shade, mulberry32,
     spawnDefault: { x: (D.spawn.x + 0.5) * TILE, y: (D.spawn.y + 0.5) * TILE },
   };
   if (typeof module !== "undefined" && module.exports) module.exports = api;

@@ -387,8 +387,21 @@
           try { S.preop = await root.IRGameData.loadPreopMap(); } catch (e) { S.preop = {}; }
           // fill the ward beds (level-gated NPCs; migrates old saves in place)
           root.IRWard.ensureWard(S.save, S.cases, S.bundle.config, Date.now(), Math.random, S.preop);
-          root.IRUI.clear();
-          this.scene.start("Overworld");
+          const enter = () => { root.IRUI.clear(); this.scene.start("Overworld"); };
+          // First play (no saved look yet) → build your resident before entering.
+          if (!S.save.appearance) {
+            const meta = (S.user && S.user.user_metadata) || {};
+            root.IRUI.CharCreator.show({
+              name: S.save.name || meta.display_name || "",
+              appearance: S.save.appearance,        // undefined → sensible defaults
+              startLabel: "Enter the campus ▶",
+              onStart: async (app) => {
+                S.save.appearance = app; S.save.name = app.name;
+                if (S.user && !S.guest) { try { await root.IRNet.writeSlot(S.slot, S.save); } catch (e) { /* saved locally regardless */ } }
+                enter();
+              },
+            });
+          } else { enter(); }
         } catch (e) {
           try { console.error("startGame failed:", e); } catch (_) {}
           status.setText("Could not start: " + ((e && e.message) || e));
@@ -526,7 +539,7 @@
       this.cameras.main.setBounds(0, 0, W.WPX, W.HPX).startFollow(this.player, true, 0.15, 0.15).setBackgroundColor("#101724");
 
       // --- HUD + campus map key
-      const who = S.guest ? "guest (no save)" : ((S.user && S.user.email) || "resident");
+      const who = (S.save && S.save.name) || (S.guest ? "guest (no save)" : ((S.user && S.user.email) || "resident"));
       this._hud = hud(this, "");
       const refreshHud = () => {
         const lv = root.IRWard.levelFor((S.bundle && S.bundle.config) || {}, S.save.xp || 0);
@@ -1210,11 +1223,30 @@
             portals.push({ x: x0 + CW / 2, y: CY0 + 80, w: 80, h: 70, label: "Call room " + (i + 1) + " — occupied",
               onEnter: () => { this.busy = false; root.IRUI.toast("Shhh. Post-call. The resident does not stir."); } });
           } else {
-            this.add.image(x0 + 74, CY0 + 100, "t_kiosk").setOrigin(0.5, 1).setDepth(CY0 + 100); solid(x0 + 74, CY0 + 92, 20, 14);
-            portals.push({ x: x0 + CW / 2, y: CY0 + 80, w: 80, h: 70, label: "Your call room — check your progress",
+            // progress terminal (right) — zone narrowed so the mirror fits too
+            this.add.image(x0 + 78, CY0 + 100, "t_kiosk").setOrigin(0.5, 1).setDepth(CY0 + 100); solid(x0 + 78, CY0 + 92, 20, 14);
+            portals.push({ x: x0 + 78, y: CY0 + 80, w: 52, h: 60, label: "Your call room — check your progress",
               onEnter: () => openOverlay((close) =>
                 root.IRUI.CallRoom.show({ save: S.save, user: S.user, guest: S.guest, tiers: (S.bundle.config.clout_tiers || {}).tiers || [],
                   level: root.IRWard.levelFor(S.bundle.config, S.save.xp || 0), cases: S.cases }, { onClose: close })) });
+            // wardrobe mirror (left) — reopens the character creator; the new
+            // look repaints on scene restart (ensureTextures → paintPlayer).
+            const mx = x0 + 18, my = CY0 + 96;
+            const mg = this.add.graphics().setDepth(3);
+            mg.fillStyle(0x6a5530, 1).fillRect(mx - 12, my - 26, 24, 46);       // wooden frame
+            mg.fillStyle(0x9fc7d6, 1).fillRect(mx - 9, my - 23, 18, 40);        // glass
+            mg.fillStyle(0xdceef5, 0.5).fillRect(mx - 9, my - 23, 6, 40);       // sheen
+            label(this, mx, my - 34, "mirror", 8).setAlpha(0.55).setDepth(4);
+            solid(mx, my - 2, 24, 12);
+            portals.push({ x: mx, y: my, w: 52, h: 52, label: "Mirror — change your look",
+              onEnter: () => openOverlay((close) =>
+                root.IRUI.CharCreator.show({
+                  title: "Wardrobe mirror", startLabel: "Save look ▶",
+                  subtitle: "Freshen up between cases — your new look takes effect right away.",
+                  appearance: S.save.appearance, name: S.save.name || "",
+                  onStart: async (app) => { S.save.appearance = app; S.save.name = app.name; await persist(); root.IRUI.clear(); this.scene.restart({ floor: floor }); },
+                  onCancel: close,
+                })) });
           }
         });
         flavor(480, 555, "Vending machine", "The good snack row is, as always, empty. E4 rattles but does not fall.");
