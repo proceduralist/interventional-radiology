@@ -104,6 +104,14 @@
     } catch (e) { /* audio blocked by the browser — the HONK! bubble still shows */ }
   }
   function carHonk(scene, c) {
+    // Only honk within earshot — i.e., when the car is actually on-screen. A car
+    // honking off-camera is just noise the player can't place (Ryan). Skips both
+    // the sound and the (invisible-anyway) bubble for off-screen cars.
+    const cam = scene.cameras && scene.cameras.main;
+    if (cam && cam.worldView) {
+      const v = cam.worldView, m = 48;   // small margin so an edge-of-screen car still honks
+      if (c.x < v.x - m || c.x > v.right + m || c.y < v.y - m || c.y > v.bottom + m) return;
+    }
     // reuse ONE bubble per car (creating a Text every honk re-rasterizes + churns GC)
     let t = c.honkText;
     if (!t) {
