@@ -1034,11 +1034,17 @@
       };
       namebox.append(nameInput, bRand);
 
-      // live preview: full-body sprite + head-and-shoulders portrait
+      // live preview: WALKING full-body sprite (click to rotate) + portrait —
+      // the exact frames the in-world playersheet uses, so what you see is
+      // literally what walks the wards.
       const preview = el("div", "cc-preview");
-      const bodyC = document.createElement("canvas"); bodyC.className = "cc-canv"; bodyC.width = A.BODY_W * 5; bodyC.height = A.BODY_H * 5;
+      const bodyC = document.createElement("canvas"); bodyC.className = "cc-canv"; bodyC.width = A.FRAME_W * 2; bodyC.height = A.FRAME_H * 2;
+      bodyC.title = "Click to turn";
       const faceC = document.createElement("canvas"); faceC.className = "cc-canv cc-face"; faceC.width = A.PORTRAIT_W * 4; faceC.height = A.PORTRAIT_H * 4;
       preview.append(bodyC, faceC);
+      let dirIx = 0, tick = 0;                        // d → l → u → r carousel
+      const DIR_CYCLE = ["d", "l", "u", "r"];
+      bodyC.onclick = function () { dirIx = (dirIx + 1) % DIR_CYCLE.length; paintBody(); };
 
       const bStart = el("button", "btn primary cc-start", opts.startLabel || "Start ▶");
       bStart.onclick = function () {
@@ -1072,6 +1078,9 @@
         }
         ctx.globalAlpha = 1;
       }
+      function paintBody() {
+        paintCanvas(bodyC, A.frameOps(app, DIR_CYCLE[dirIx], A.WALK_SEQ[tick % A.WALK_SEQ.length]), 2);
+      }
       function render() {
         app = A.normalize(app);
         Object.keys(segs).forEach(function (key) {
@@ -1079,9 +1088,14 @@
           Array.prototype.forEach.call(segs[key].children, function (b, i) { b.classList.toggle("on", i === sel); });
         });
         paintCanvas(faceC, A.portraitOps(app), 4);
-        paintCanvas(bodyC, A.bodyOps(app), 5);
+        paintBody();
       }
       render();
+      // stroll in place; self-stops once the overlay is torn down
+      const walkIv = setInterval(function () {
+        if (!bodyC.isConnected) { clearInterval(walkIv); return; }
+        tick++; paintBody();
+      }, 1000 / A.WALK_FPS);
       return { render: render, card: card, get: function () { return A.normalize(Object.assign({}, app, { name: (nameInput.value || "").trim() })); } };
     },
   };

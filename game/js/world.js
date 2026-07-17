@@ -343,15 +343,19 @@
     return key;
   }
 
-  // Paint the player sprite (t_player) from the saved appearance. Kept separate
-  // from paintSprites so it can be re-run whenever the look changes (character
-  // creator / wardrobe mirror) — it removes and regenerates the texture.
-  function drawOps(g, ops) {
+  // Paint the player walk sheet ("playersheet") from the saved appearance.
+  // Kept separate from paintSprites so it can be re-run whenever the look
+  // changes (character creator / wardrobe mirror). Builds a 3-step × 4-direction
+  // sheet in the SAME layout as one npcs.png character block, registers the 12
+  // sub-frames, and (re)creates the four "pl-*" walk anims — so the player
+  // animates exactly like the NPC cast and always matches the saved look.
+  function drawOps(g, ops, ox, oy) {
+    ox = ox || 0; oy = oy || 0;
     for (let i = 0; i < ops.length; i++) {
       const o = ops[i];
       g.fillStyle(o.c, o.a == null ? 1 : o.a);
-      if (o.shape === "ellipse") g.fillEllipse(o.x, o.y, o.w, o.h);
-      else g.fillRect(o.x, o.y, o.w, o.h);
+      if (o.shape === "ellipse") g.fillEllipse(o.x + ox, o.y + oy, o.w, o.h);
+      else g.fillRect(o.x + ox, o.y + oy, o.w, o.h);
     }
   }
   function currentAppearance() {
@@ -361,10 +365,21 @@
   function paintPlayer(scene, app) {
     const A = root.IRAppearance;
     if (!A) return; // module missing → nothing to paint (browser-only path anyway)
-    if (scene.textures.exists("t_player")) scene.textures.remove("t_player");
+    const a = app || currentAppearance();
+    if (scene.textures.exists("playersheet")) scene.textures.remove("playersheet");
+    const FW = A.FRAME_W, FH = A.FRAME_H;
     const g = scene.make.graphics({ add: false });
-    drawOps(g, A.bodyOps(app || currentAppearance()));
-    g.generateTexture("t_player", A.BODY_W, A.BODY_H); g.destroy();
+    for (let r = 0; r < A.DIRS.length; r++)
+      for (let s = 0; s < 3; s++) drawOps(g, A.frameOps(a, A.DIRS[r], s), s * FW, r * FH);
+    g.generateTexture("playersheet", FW * 3, FH * A.DIRS.length); g.destroy();
+    const tex = scene.textures.get("playersheet");
+    for (let r = 0; r < A.DIRS.length; r++)
+      for (let s = 0; s < 3; s++) tex.add(r * 3 + s, 0, s * FW, r * FH, FW, FH);
+    if (scene.anims) A.DIRS.forEach((d, r) => {           // rebind anims to the fresh frames
+      if (scene.anims.exists("pl-" + d)) scene.anims.remove("pl-" + d);
+      scene.anims.create({ key: "pl-" + d, frameRate: A.WALK_FPS, repeat: -1,
+        frames: A.WALK_SEQ.map((s) => ({ key: "playersheet", frame: r * 3 + s })) });
+    });
   }
 
   function paintSprites(scene) {
@@ -662,7 +677,7 @@
       g.fillStyle(0x2b303c, 1); g.fillRect(0, 50, 36, 2);
     });
     // staff sprites: nurse (teal scrubs) + technologist (navy scrubs, lead apron).
-    // Same 20×28 frame as t_player → identical Y-sort/feet math.
+    // Legacy 20×28 frames (fallback cast if the NPC sheet fails to load).
     const staff = (key, scrub, scrubDark, hair, apron) => tex(key, 20, 28, (g) => {
       g.fillStyle(0x000000, 0.28); g.fillEllipse(10, 26, 15, 5);
       g.fillStyle(hair, 1); g.fillRect(5, 0, 10, 5);

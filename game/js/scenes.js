@@ -50,13 +50,25 @@
       scene._hint.setPosition(scene.player.x - 40, scene.player.y - 52).setVisible(true);
     } else { scene._hint.setVisible(false); scene._hintLabel = null; }
   }
+  // stand still = middle frame of the current facing (NPC sheet convention)
+  function playerStand(scene) {
+    const A = root.IRAppearance, p = scene.player;
+    if (!p || !p.anims) return;
+    p.anims.stop();
+    if (A && p.setFrame) p.setFrame(A.DIRS.indexOf(scene._pdir || "d") * 3 + 1);
+  }
   function movePlayer(scene, speed) {
-    if (scene.busy) { scene.player.body.setVelocity(0, 0); return; }
+    if (scene.busy) { scene.player.body.setVelocity(0, 0); playerStand(scene); return; }
     const c = scene.cursors, w = scene.wasd; let vx = 0, vy = 0;
     if (c.left.isDown || w.left.isDown) vx = -1; else if (c.right.isDown || w.right.isDown) vx = 1;
     if (c.up.isDown || w.up.isDown) vy = -1; else if (c.down.isDown || w.down.isDown) vy = 1;
     if (vx && vy) { vx *= 0.7071; vy *= 0.7071; }
     scene.player.body.setVelocity(vx * speed, vy * speed);
+    // walk anim faces the way we move (horizontal wins on diagonals)
+    if (vx || vy) {
+      scene._pdir = vx < 0 ? "l" : vx > 0 ? "r" : vy < 0 ? "u" : "d";
+      if (scene.player.anims) scene.player.anims.play("pl-" + scene._pdir, true);
+    } else playerStand(scene);
     // Y-sort by the player's FEET (origin is 0.5,0.5, so add half-height) to match
     // every prop/NPC which sorts on its base — otherwise props ~28px north of the
     // feet wrongly draw over the player (buildings, shrubs, lamps, trees…).
@@ -70,9 +82,11 @@
     return scene.add.text(x, y, txt, Object.assign({ fontFamily: "monospace", fontSize: (size || 12) + "px", color: TEXT, align: "center" }, opts || {})).setOrigin(0.5).setDepth(5);
   }
   function spawnPlayer(scene, x, y) {
-    scene.player = scene.physics.add.image(x, y, "t_player").setScale(2); // characters are 2× (Ryan)
-    scene.player.body.setSize(14, 9).setOffset(3, 18); // feet-only body → walk "behind" things (scales with sprite)
+    // playersheet frame 1 = down-facing stand; same 0.6 scale as the NPC cast
+    scene.player = scene.physics.add.sprite(x, y, "playersheet", 1).setScale(NPC_SCALE);
+    scene.player.body.setSize(50, 22).setOffset(15, 93); // feet-only body, NPC-matched → walk "behind" things
     scene.player.setCollideWorldBounds(true);
+    scene._pdir = "d";
     stdControls(scene);
   }
   // NPC ↔ world physics: every patrolling NPC collides with the scene's solids
@@ -194,7 +208,7 @@
     let s;
     if (!scene.textures.exists("npcsheet")) {
       const key = NPC_FALLBACK[role] || "t_tech";
-      s = scene.add.image(x, y, scene.textures.exists(key) ? key : "t_player").setScale(2).setOrigin(0.5, 1).setDepth(y);
+      s = scene.add.image(x, y, scene.textures.exists(key) ? key : "t_tech").setScale(2).setOrigin(0.5, 1).setDepth(y);
     } else {
       s = scene.add.sprite(x, y, "npcsheet", npcFrame(npcCharOf(role), dir || "d", 1))
         .setScale(NPC_SCALE).setOrigin(0.5, 0.96).setDepth(y);
@@ -227,7 +241,7 @@
       s = scene.physics.add.sprite(x, y, "npcsheet", npcFrame(c, "d", 1)).setScale(NPC_SCALE).setOrigin(0.5, 0.96);
       s.body.setSize(50, 22).setOffset(15, 93);            // feet box (frame units; scales ×0.6 → ~30×13)
     } else {
-      s = scene.physics.add.image(x, y, NPC_FALLBACK[role] || "t_player").setScale(2).setOrigin(0.5, 1);
+      s = scene.physics.add.image(x, y, NPC_FALLBACK[role] || "t_tech").setScale(2).setOrigin(0.5, 1);
       s.body.setSize(14, 9).setOffset(3, 18);
     }
     s.body.pushable = false;                                // the player can't shove staff around

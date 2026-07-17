@@ -1,7 +1,9 @@
 /* Character appearance unit tests (pure Node, no jsdom).
    Covers: normalize clamping + name handling, idempotence, option-list sizes,
-   and that bodyOps/portraitOps emit valid ops that respond to every choice
-   (hair incl. bald, glasses, beard, outfit, sex, skin).
+   that bodyOps/portraitOps emit valid ops that respond to every choice
+   (hair incl. bald, glasses, beard, outfit, sex, skin), and the NPC-style
+   walk sheet: frameOps for every direction × step, right = mirrored left,
+   steps actually animate, and the sheet constants scenes.js relies on.
    Run: node game/tests/appearance.test.js */
 "use strict";
 const assert = require("assert");
@@ -95,6 +97,71 @@ t("outfit and sex change the sprite", () => {
   const male = bodyKey(Object.assign({}, base, { sex: 0, outfit: 1 }));
   const female = bodyKey(Object.assign({}, base, { sex: 1, outfit: 1 }));
   assert.ok(male !== female, "male and female sprites differ");
+});
+
+t("walk-sheet constants match what world.js/scenes.js expect", () => {
+  assert.strictEqual(A.FRAME_W, 80);
+  assert.strictEqual(A.FRAME_H, 120);
+  assert.deepStrictEqual(A.DIRS, ["d", "l", "r", "u"]);
+  assert.deepStrictEqual(A.WALK_SEQ, [0, 1, 2, 1]);
+  assert.ok(A.WALK_FPS > 0);
+  assert.strictEqual(A.BODY_W, A.FRAME_W, "body frame = sheet frame");
+  assert.strictEqual(A.BODY_H, A.FRAME_H);
+});
+
+t("frameOps yields valid non-empty ops for every dir × step × option combo", () => {
+  let lists = 0;
+  for (let sex = 0; sex < 2; sex++)
+    for (let hair = 0; hair < A.HAIR.length; hair++)
+      for (let outfit = 0; outfit < A.OUTFITS.length; outfit++)
+        for (let g = 0; g < 2; g++)
+          for (let b = 0; b < 2; b++)
+            for (const dir of A.DIRS) for (const s of [0, 1, 2]) {
+              const ops = A.frameOps({ sex, skin: 2, hair, outfit, glasses: !!g, beard: !!b }, dir, s);
+              assert.ok(ops.length, "non-empty ops");
+              validOps(ops);
+              lists++;
+            }
+  assert.strictEqual(lists, 2 * A.HAIR.length * A.OUTFITS.length * 2 * 2 * A.DIRS.length * 3);
+});
+
+t("bodyOps is the down-facing standing frame", () => {
+  const app = { sex: 0, skin: 2, hair: 1, outfit: 1 };
+  assert.deepStrictEqual(A.bodyOps(app), A.frameOps(app, "d", 1));
+});
+
+t("right-facing frames mirror left-facing frames across the sheet width", () => {
+  const app = { sex: 1, skin: 3, hair: 0, outfit: 2, glasses: true, beard: false };
+  for (const s of [0, 1, 2]) {
+    const L = A.frameOps(app, "l", s), R = A.frameOps(app, "r", s);
+    assert.strictEqual(L.length, R.length, "same op count");
+    for (let i = 0; i < L.length; i++) {
+      const l = L[i], r = R[i];
+      const mx = l.shape === "ellipse" ? A.FRAME_W - l.x : A.FRAME_W - l.x - l.w;
+      assert.strictEqual(r.x, mx, "x mirrored (op " + i + ")");
+      assert.strictEqual(r.y, l.y, "y unchanged");
+      assert.strictEqual(r.c, l.c, "colour unchanged");
+    }
+  }
+});
+
+t("walk steps animate: 0 and 2 differ from the stand and from each other", () => {
+  const app = { sex: 0, skin: 2, hair: 1, outfit: 1 };
+  for (const dir of A.DIRS) {
+    const k = (s) => JSON.stringify(A.frameOps(app, dir, s));
+    assert.ok(k(0) !== k(1) && k(2) !== k(1) && k(0) !== k(2), dir + " frames differ");
+  }
+});
+
+t("every direction draws a distinct frame", () => {
+  const app = { sex: 0, skin: 2, hair: 1, outfit: 0, glasses: true, beard: true };
+  const keys = A.DIRS.map((d) => JSON.stringify(A.frameOps(app, d, 1)));
+  assert.strictEqual(new Set(keys).size, 4, "d/l/r/u all differ");
+});
+
+t("frameOps clamps junk dir/step to safe defaults", () => {
+  const app = { sex: 0, skin: 2, hair: 1, outfit: 1 };
+  assert.deepStrictEqual(A.frameOps(app, "x", 9), A.frameOps(app, "d", 1));
 });
 
 t("hexStr formats 6-digit hex", () => {
