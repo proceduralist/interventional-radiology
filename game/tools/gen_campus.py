@@ -30,7 +30,9 @@ BLD = {
  "ummmc":   dict(x=31, y=17, w=9,  h=10, dcol=35, side="s", floors=8,  facade="punched",   wall="#d8d1c2", roof="#8a9298", accent="#b5502f", glass="#5f6570", short="UMASS MEMORIAL"),
  # DiMare (north) and Aaron Lazare (directly south of it, 1 row of grass between,
  # same columns) — both north of the south road. The two quads sit to their east.
- "dimare":  dict(x=12, y=19, w=5,  h=3,  dcol=14, side="s", floors=14, facade="darkglass", wall="#2f3a49", roof="#232a33", accent="#c8ccd0", glass="#39465a", short="DIMARE"),
+ # DiMare = the new all-glass tower (photo-matched): silver curtain wall, striped
+ # parapet, entrance on the NORTH-EAST corner facing Quad 1 (side "e", drow at y).
+ "dimare":  dict(x=12, y=19, w=5,  h=3,  dcol=14, side="e", drow=19, floors=11, facade="glass", wall="#b8c0c8", roof="#3a4148", accent="#39414d", glass="#a8c8dc", short="DIMARE"),
  "lazare":  dict(x=12, y=25, w=5,  h=3,  dcol=14, side="s", floors=9,  facade="punched",   wall="#d8d1c2", roof="#8a9298", accent="#2e6db4", glass="#5f6570", short="LAZARE"),
  "acc":     dict(x=20, y=34, w=4,  h=10, dcol=21, side="n", floors=7,  facade="glass",     wall="#6f93b8", roof="#8a9298", accent="#b5502f", glass="#5a7ea3", short="ACC"),
  "powerplant": dict(x=42, y=16, w=5, h=4, dcol=44, side="s", floors=3, facade="punched",  wall="#62584a", roof="#4a423a", accent="#8a7a5a", glass="#3a342c", short="POWER"),
@@ -45,8 +47,8 @@ HELIPAD = {"x":42, "y":23}        # ground pad in the gap between the buildings 
 def door_of(b):
     if b["side"] == "s": return [b["dcol"], b["y"] + b["h"] + WALL]   # below the 2-tile wall face
     if b["side"] == "n": return [b["dcol"], b["y"] - 1]
-    if b["side"] == "e": return [b["x"] + b["w"], b["y"] + b["h"] // 2]
-    return [b["x"] - 1, b["y"] + b["h"] // 2]
+    if b["side"] == "e": return [b["x"] + b["w"], b.get("drow", b["y"] + b["h"] // 2)]
+    return [b["x"] - 1, b.get("drow", b["y"] + b["h"] // 2)]
 
 def build_terrain():
     g = [["." for _ in range(COLS)] for _ in range(ROWS)]
@@ -72,6 +74,18 @@ def build_terrain():
         for r in range(ROWS):
             for cc in (v-2, v+2):
                 if 0 <= cc < COLS and g[r][cc] == ".": g[r][cc] = "s"
+    # Bridge-less crossings (Ryan): where the N/S roads USED to cross the lake,
+    # the west shore keeps a WALKWAY (the col-51 shore sidewalk runs through) and
+    # everything east of the lake reverts to grass — no dead-end asphalt stubs.
+    shore_walk = WATER[0] - 1                              # col between Lake Ave and the water
+    for center in (NORTH_ROAD, SOUTH_ROAD):
+        for r in span(center):
+            if g[r][shore_walk] == "r": g[r][shore_walk] = "s"
+    keep_east = set(span(ROUTE9) + [ROUTE9 - 2, ROUTE9 + 2])   # Route 9 + its sidewalks continue east
+    for r in range(ROWS):
+        if r in keep_east: continue
+        for c in range(WATER[-1] + 1, COLS):
+            if g[r][c] in ("r", "s"): g[r][c] = "."
     # --- Two quads east of the DiMare/Lazare stack. Each is a COBBLESTONE plaza
     #     ('c') ringing a striped mowed-lawn interior ('q'/'Q') — no paths cut the
     #     grass (matches Ryan's reference). The main quad is east of DiMare; the
@@ -107,12 +121,12 @@ for bid, b in BLD.items():
 labels = {
     "greens": [[WATER[1]-1, 40, "Lake Quinsigamond"], [22, 21, "The Quad"], [22, 27, "S. Quad"]],
     "lots": [],
-    "streets": [
-        [PLANTATION, 6, -90, "Plantation St"],
-        [LAKE_AVE, 6, -90, "Lake Ave"],
-        [7, ROUTE9 - 2, 0, "Route 9"],
-        [2, NORTH_ROAD - 2, 0, "North Rd"],
-        [2, SOUTH_ROAD - 2, 0, "South Rd"],
+    "streets": [                       # kept clear of each other: vertical names
+        [PLANTATION, 5, -90, "Plantation St"],   # sit N of the north road; horizontal
+        [LAKE_AVE, 5, -90, "Lake Ave"],          # names sit E of Plantation's sidewalk
+        [8, ROUTE9 - 2, 0, "Route 9"],
+        [8, NORTH_ROAD - 2, 0, "North Rd"],
+        [8, SOUTH_ROAD - 2, 0, "South Rd"],
     ],
     "signs": [],
 }
@@ -121,10 +135,10 @@ data = {
     "COLS": COLS, "ROWS": ROWS,
     "buildings": buildings, "terrain": terrain,
     "skybridges": SKY, "spawn": SPAWN, "helipad": HELIPAD, "labels": labels,
-    "quads": [
+    "quads": [                          # bike racks removed campus-wide (Ryan 2026-07-17)
         {"lamps": [[18, 20], [29, 20], [18, 23], [29, 23]],
          "shrubs": [[19, 20], [28, 20], [19, 23], [28, 23]],
-         "bikeracks": [[17, 22]]},
+         "bikeracks": []},
         {"lamps": [[18, 26], [29, 26], [18, 29], [29, 29]],
          "shrubs": [[19, 26], [28, 26], [19, 29], [28, 29]],
          "bikeracks": []},

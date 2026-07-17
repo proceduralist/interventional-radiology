@@ -58,17 +58,26 @@
     if (A && p.setFrame) p.setFrame(A.DIRS.indexOf(scene._pdir || "d") * 3 + 1);
   }
   function movePlayer(scene, speed) {
-    if (scene.busy) { scene.player.body.setVelocity(0, 0); playerStand(scene); return; }
+    if (scene.busy) {
+      scene.player.body.setVelocity(0, 0);
+      if (scene._pwalking) { playerStand(scene); scene._pwalking = false; }
+      return;
+    }
     const c = scene.cursors, w = scene.wasd; let vx = 0, vy = 0;
     if (c.left.isDown || w.left.isDown) vx = -1; else if (c.right.isDown || w.right.isDown) vx = 1;
     if (c.up.isDown || w.up.isDown) vy = -1; else if (c.down.isDown || w.down.isDown) vy = 1;
     if (vx && vy) { vx *= 0.7071; vy *= 0.7071; }
     scene.player.body.setVelocity(vx * speed, vy * speed);
-    // walk anim faces the way we move (horizontal wins on diagonals)
+    // walk anim faces the way we move (horizontal wins on diagonals). Anim calls
+    // ONLY on state/direction CHANGE — issuing play()/stop() every frame is what
+    // made the walk feel laggy/glitchy (constant restarts + frame resets).
     if (vx || vy) {
-      scene._pdir = vx < 0 ? "l" : vx > 0 ? "r" : vy < 0 ? "u" : "d";
-      if (scene.player.anims) scene.player.anims.play("pl-" + scene._pdir, true);
-    } else playerStand(scene);
+      const dir = vx < 0 ? "l" : vx > 0 ? "r" : vy < 0 ? "u" : "d";
+      if (!scene._pwalking || dir !== scene._pdir) {
+        scene._pdir = dir; scene._pwalking = true;
+        if (scene.player.anims) scene.player.anims.play("pl-" + dir, true);
+      }
+    } else if (scene._pwalking) { playerStand(scene); scene._pwalking = false; }
     // Y-sort by the player's FEET (origin is 0.5,0.5, so add half-height) to match
     // every prop/NPC which sorts on its base — otherwise props ~28px north of the
     // feet wrongly draw over the player (buildings, shrubs, lamps, trees…).
@@ -84,9 +93,12 @@
   function spawnPlayer(scene, x, y) {
     // playersheet frame 1 = down-facing stand; same 0.6 scale as the NPC cast
     scene.player = scene.physics.add.sprite(x, y, "playersheet", 1).setScale(NPC_SCALE);
-    scene.player.body.setSize(50, 22).setOffset(15, 93); // feet-only body, NPC-matched → walk "behind" things
+    // feet-only body replicating the ORIGINAL 20×28@2× box (display 28×18, bottom
+    // at y+26) so collisions/spawns/doorways feel identical to the old sprite —
+    // the NPC-sized box snagged on jambs and read as glitchy movement (Ryan).
+    scene.player.body.setSize(47, 30).setOffset(17, 73);
     scene.player.setCollideWorldBounds(true);
-    scene._pdir = "d";
+    scene._pdir = "d"; scene._pwalking = false;
     stdControls(scene);
   }
   // NPC ↔ world physics: every patrolling NPC collides with the scene's solids
@@ -151,6 +163,23 @@
     // pokes into the road tile from the sidewalk does NOT trip the car (Ryan).
     for (let i = 0; i < cars.length; i++) {
       const c = cars[i]; if (!c.body) continue;
+      // --- N/S-road cars reach the bridge-less lake → turn onto Lake Ave ------
+      // (right/left picked at spawn; WAIT if any car occupies the junction lane)
+      if (c.turnCol != null && c.horiz && c.dir > 0) {
+        const laneX = c.turnCol * 32 + 16 + (c.turnTo > 0 ? -c.lanePx : c.lanePx);
+        if (c.x >= laneX - 2) {
+          let busyLane = false;
+          for (let j = 0; j < cars.length; j++) {
+            const o = cars[j];
+            if (o !== c && !o.horiz && Math.abs(o.x - (c.turnCol * 32 + 16)) < 52 && Math.abs(o.y - c.y) < 170) { busyLane = true; break; }
+          }
+          if (busyLane) { c.body.setVelocity(0, 0); c.setDepth(c.y); continue; }  // yield the junction
+          c.horiz = false; c.dir = c.turnTo;
+          c.setTexture("t_car_v"); c.setFlipX(false); c.setFlipY(c.dir < 0);
+          c.body.setSize(c.width, c.height, true);
+          c.x = laneX;
+        }
+      }
       const halfF = (c.horiz ? c.displayWidth : c.displayHeight) / 2;
       const halfP = (c.horiz ? c.displayHeight : c.displayWidth) / 2;
       const lx = c.horiz ? (c.dir > 0 ? c.x + halfF : c.x - halfF - PERSON_GAP) : c.x - halfP;
@@ -170,7 +199,15 @@
       else c.body.setVelocity(c.horiz ? c.dir * c.cruise : 0, c.horiz ? 0 : c.dir * c.cruise);
       c.setDepth(c.y);
       const rb = c.xMax != null ? c.xMax : W.WPX;                 // bounded cars wrap at the lake shore, not the map edge
-      if (c.horiz && c.dir > 0 && c.x > (c.xMax != null ? rb : rb + M)) c.x = -M;
+      if (!c.horiz && c.homeY != null && (c.dir > 0 ? c.y > W.HPX + M : c.y < -M)) {
+        // a turned N/S-road car left via Lake Ave → loop back onto its home road
+        c.horiz = true; c.dir = 1;
+        c.setTexture("t_car_h"); c.setFlipX(false); c.setFlipY(false);
+        c.body.setSize(c.width, c.height, true);
+        c.y = c.homeY; c.x = -M - Math.random() * 240;
+        c.turnTo = Math.random() < 0.5 ? 1 : -1;
+      }
+      else if (c.horiz && c.dir > 0 && c.x > (c.xMax != null ? rb : rb + M)) c.x = -M;
       else if (c.horiz && c.dir < 0 && c.x < -M) c.x = (c.xMax != null ? rb : rb + M);
       else if (!c.horiz && c.dir > 0 && c.y > W.HPX + M) c.y = -M;
       else if (!c.horiz && c.dir < 0 && c.y < -M) c.y = W.HPX + M;
@@ -520,9 +557,21 @@
           c.horiz = horiz; c.dir = dir; c.cruise = 72 + Math.random() * 46; c.honkCd = 0;
           if (horiz && rightPx != null) c.xMax = rightPx;
           this._cars.push(c);
+          return c;
         };
         const shoreX = (RD.water && RD.water.length ? RD.water[0] : W.COLS) * TILE - 4;  // west edge of the lake
-        [RD.north, RD.south].forEach(cy => [1, -1].forEach(dir => { mkCar(true, cy, dir, 0, shoreX); mkCar(true, cy, dir, 1, shoreX); }));
+        // N/S roads dead-end at the lake: EASTBOUND cars turn N/S onto Lake Ave
+        // (waiting out any traffic at the junction) and exit at the map edge,
+        // then loop back onto their home road; WESTBOUND cars enter at the shore
+        // (as if they'd just turned in) and cruise west. Route 9 keeps the bridge.
+        [RD.north, RD.south].forEach(cy => [1, -1].forEach(dir => [0, 1].forEach(slot => {
+          const c = mkCar(true, cy, dir, slot, dir < 0 ? shoreX : null);
+          if (dir > 0) {
+            c.turnCol = RD.lakeAve; c.lanePx = lane;
+            c.homeY = cy * TILE + TILE / 2 + lane;
+            c.turnTo = Math.random() < 0.5 ? 1 : -1;
+          }
+        })));
         [1, -1].forEach(dir => { mkCar(true, RD.route9, dir, 0); mkCar(true, RD.route9, dir, 1); });  // Route 9 crosses the bridge, full width
         [RD.plantation, RD.lakeAve].forEach(cx => [1, -1].forEach(dir => mkCar(false, cx, dir, 0)));
       }
@@ -535,7 +584,7 @@
       ped(38, 11, -12, 0, "doctor");     // north-road sidewalk, heading west
       ped(9, 48, 14, 0, "senior");       // Route 9 sidewalk
       ped(4, 14, 0, 12, "resident");     // Plantation St sidewalk (vertical)
-      ped(49, 15, 0, 11, "residentF");   // Lake Ave sidewalk (vertical)
+      ped(51, 15, 0, 11, "residentF");   // lakeside shore walkway (E of Lake Ave)
       ped(33, 30, 12, 0, "visitor");     // south-road sidewalk, east of the quads
 
       // --- trees (Y-sorted, trunk-only collision). Scaled 1.5× so a full-grown
@@ -752,7 +801,9 @@
           this.busy = false; root.IRUI.toast("\u201cKandarpa is on reserve. Again. Third-years.\u201d", 3200); } });
         portals.push({ x: 660, y: 330, w: 320, h: 180, label: "Browse the stacks", onEnter: () => {
           this.busy = false; root.IRUI.toast("The stacks smell like 1978. A first-year is asleep on a copy of Kandarpa.", 3400); } });
-        // stairs back down
+        // stairs back down — recessed stairwell bay in the north wall
+        this.add.graphics().setDepth(1.5).fillStyle(0x11161f, 1).fillRect(778, 146, 80, 88)
+          .fillStyle(0x000000, 0.35).fillRect(778, 232, 80, 4);
         this.add.image(786, 154, "t_stairs").setOrigin(0).setDepth(2);
         portals.push({ x: 818, y: 262, w: 60, h: 40, label: "Stairs down — Lobby", onEnter: () => this.scene.restart({ id: b.id }) });
         spawnPlayer(this, 770, 300);
@@ -786,17 +837,22 @@
         const say = (msg) => () => { this.busy = false; root.IRUI.toast(msg, 3400); };
 
         if (theme === "auditorium") {
-          // stage, randomly generated speaker mid-lecture, random seated audience
+          // proper stage: raised apron + projection screen on the back wall; the
+          // lecturer STANDS at a wooden podium facing the house (no walk anim —
+          // the old talk loop cycled walk frames and read as pacing in place).
           const stage = this.add.graphics().setDepth(4);
-          stage.fillStyle(0x3a3448, 1).fillRect(rx + 10, top + 2, RW2 - 20, 26);
+          stage.fillStyle(0x3a3448, 1).fillRect(rx + 10, top + 2, RW2 - 20, 38);
           stage.fillStyle(0x584f6e, 1).fillRect(rx + 10, top + 2, RW2 - 20, 4);
-          this.add.image(cx - 34, top + 10, "t_kiosk").setOrigin(0.5, 1).setDepth(top + 10); // podium
-          npcTalker(this, cx - 10, top + 24, rndChar(), "d");
+          stage.fillStyle(0x241f30, 1).fillRect(rx + 10, top + 38, RW2 - 20, 4);            // stage lip shadow
+          stage.fillStyle(0xdfe6f0, 0.95).fillRect(cx + 46, RY + 8, 170, 32);               // projection screen
+          stage.fillStyle(0x9fc4e0, 0.55).fillRect(cx + 52, RY + 13, 74, 22);               // slide glow
+          npcIdle(this, cx, top + 14, rndChar(), "d");                                      // lecturer, standing
+          this.add.image(cx, top + 36, "t_podium").setOrigin(0.5, 1).setDepth(top + 36);    // lectern in front
           for (let r = 0; r < 2; r++) for (let c2 = 0; c2 < Math.floor((RW2 - 44) / 40); c2++) {
             if (Math.random() < 0.72) npcSeated(this, rx + 34 + c2 * 40, top + 66 + r * 34, rndChar(), "u");
           }
           const act = p.action === "conference" ? () => Conference.run(this) : say(p.msg || "The talk is mid-slide 47 of 90.");
-          portals.push({ x: cx, y: top + 30, w: RW2 - 30, h: 40, label: p.label, onEnter: act });
+          portals.push({ x: cx, y: top + 34, w: RW2 - 30, h: 40, label: p.label, onEnter: act });
         } else if (theme === "cafe") {
           // counter, espresso rig, animated barista, menu board, seated customers
           const bar = this.add.graphics().setDepth(top + 34);
@@ -873,18 +929,25 @@
       door.fillStyle(0x20262e, 1).fillRect(hcx - 36, hallY + HALLH - 6, 72, 16);
       door.fillStyle(0x2a4a66, 1).fillRect(hcx - 32, hallY + HALLH - 3, 30, 12).fillRect(hcx + 2, hallY + HALLH - 3, 30, 12);
       portals.push({ x: hcx, y: hallY + HALLH, w: 90, h: 50, label: "Exit to campus", onEnter: () => this.scene.start("Overworld") });
-      // MSB: stairs up to the library (hard gateway) — west end of the hall
+      // MSB: stairs up to the library (hard gateway) — a stairwell OPENING in the
+      // hall's north wall at the west end (flush, never free-standing — Ryan)
       if (libraryPoi) {
+        this.add.graphics().setDepth(hallY + 58).fillStyle(0x11161f, 1).fillRect(14, hallY + 4, 76, 98)
+          .fillStyle(0x000000, 0.35).fillRect(14, hallY + 98, 76, 4);
         this.add.image(20, hallY + 24, "t_stairs").setOrigin(0).setDepth(hallY + 60);
         portals.push({ x: 56, y: hallY + 130, w: 72, h: 60, label: "Stairs up — Library", onEnter: () => this.scene.restart({ id: b.id, floor: "library" }) });
       }
-      // MSB: corridor to UMass Memorial (hard gateway) — east end of the hall
+      // MSB: corridor to UMass Memorial (hard gateway) — a recessed corridor
+      // MOUTH in the hall's north wall at the east end, doors set into the wall
       if (corridorPoi) {
         const dg = this.add.graphics().setDepth(hallY + 60);
-        dg.fillStyle(0x20262e, 1).fillRect(worldW - 92, hallY + 24, 84, 56);
-        dg.fillStyle(0x2a4a66, 1).fillRect(worldW - 86, hallY + 30, 34, 44).fillRect(worldW - 46, hallY + 30, 34, 44);
-        label(this, worldW - 50, hallY + 12, "TO UMASS MEMORIAL →", 9).setAlpha(0.8).setDepth(hallY + 62);
-        portals.push({ x: worldW - 50, y: hallY + 88, w: 110, h: 60, label: "Corridor to UMass Memorial", onEnter: () => { S.lastDoor = null; this.scene.start("Hospital", { floor: "1" }); } });
+        dg.fillStyle(0x11161f, 1).fillRect(worldW - 100, hallY + 4, 92, 100);                 // corridor mouth
+        dg.fillStyle(0x20262e, 1).fillRect(worldW - 96, hallY + 8, 84, 76);                   // door frame
+        dg.fillStyle(0x2a4a66, 1).fillRect(worldW - 90, hallY + 14, 34, 64).fillRect(worldW - 50, hallY + 14, 34, 64);
+        dg.fillStyle(0x9fc4e0, 0.75).fillRect(worldW - 84, hallY + 20, 6, 22).fillRect(worldW - 44, hallY + 20, 6, 22);
+        dg.fillStyle(0x000000, 0.35).fillRect(worldW - 100, hallY + 100, 92, 4);              // threshold shadow
+        label(this, worldW - 54, hallY + 116, "TO UMASS MEMORIAL →", 9).setAlpha(0.8).setDepth(hallY + 118);
+        portals.push({ x: worldW - 54, y: hallY + 96, w: 110, h: 60, label: "Corridor to UMass Memorial", onEnter: () => { S.lastDoor = null; this.scene.start("Hospital", { floor: "1" }); } });
       }
 
       spawnPlayer(this, hcx, hallY + HALLH - 70);
@@ -1026,8 +1089,14 @@
       const solids = this.physics.add.staticGroup();
       const solid = (x, y, w, h) => { const z = this.add.zone(x, y, w, h); this.physics.add.existing(z, true); solids.add(z); };
 
-      // --- vertical circulation on the north wall (every floor) -----------
+      // --- vertical circulation RECESSED into the north wall (every floor):
+      //     dark shaft/stairwell bays make the units read as part of the wall,
+      //     never free-standing on the floor (Ryan). ------------------------
       const portals = [];
+      const bays = this.add.graphics().setDepth(1.5);
+      bays.fillStyle(0x11161f, 1).fillRect(202, 146, 76, 88);   // elevator shaft bay
+      bays.fillStyle(0x11161f, 1).fillRect(672, 146, 80, 88);   // stairwell bay
+      bays.fillStyle(0x000000, 0.35).fillRect(202, 232, 76, 4).fillRect(672, 232, 80, 4); // threshold shadow
       this.add.image(210, 154, "t_elev").setOrigin(0).setDepth(2);
       label(this, 240, 246, "ELEVATOR", 9).setAlpha(0.6).setDepth(2);
       this.add.image(680, 154, "t_stairs").setOrigin(0).setDepth(2);

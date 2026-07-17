@@ -1,7 +1,7 @@
 /* IR Casebook — Service Worker
    Offline-first precache of the app shell + data.
    Bump CACHE version whenever you update procedures.json or the app files. */
-const CACHE = "ir-casebook-v6";
+const CACHE = "ir-casebook-v7";
 
 const ASSETS = [
   "./",

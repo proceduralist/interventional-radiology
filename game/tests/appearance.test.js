@@ -103,7 +103,7 @@ t("walk-sheet constants match what world.js/scenes.js expect", () => {
   assert.strictEqual(A.FRAME_W, 80);
   assert.strictEqual(A.FRAME_H, 120);
   assert.deepStrictEqual(A.DIRS, ["d", "l", "r", "u"]);
-  assert.deepStrictEqual(A.WALK_SEQ, [0, 1, 2, 1]);
+  assert.deepStrictEqual(A.WALK_SEQ, [1, 0, 1, 2]);
   assert.ok(A.WALK_FPS > 0);
   assert.strictEqual(A.BODY_W, A.FRAME_W, "body frame = sheet frame");
   assert.strictEqual(A.BODY_H, A.FRAME_H);

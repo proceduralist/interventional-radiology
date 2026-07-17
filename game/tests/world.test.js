@@ -6,7 +6,7 @@ const W = require("../js/world.js");
 const D = require("../js/world_data.js");
 const R = D.roads;
 const g = W.geo();
-const ROAD = W.T.ROAD, WATER = W.T.WATER;
+const ROAD = W.T.ROAD, WATER = W.T.WATER, SIDE = W.T.SIDE;
 
 let n = 0;
 const ok = (name, fn) => { fn(); n++; console.log("  ✓ " + name); };
@@ -30,12 +30,16 @@ ok("the campus buildings are present with footprints", () => {
   });
 });
 
-ok("horizontal roads are 3 TILES WIDE and full width (only Route 9 bridges the lake)", () => {
+ok("horizontal roads are 3 TILES WIDE; N/S end at a shore WALKWAY, grass east of the lake; Route 9 bridges", () => {
   const inLake = (c) => R.water.indexOf(c) !== -1;
+  const shoreWalk = R.water[0] - 1, eastBank = R.water[R.water.length - 1] + 1;
   [R.north, R.south, R.route9].forEach(y => {
     [y - 1, y, y + 1].forEach(yy => {
       for (let c = 0; c < W.COLS; c++) {
-        if (inLake(c) && y !== R.route9) assert.strictEqual(g.grid[yy][c], WATER, "N/S road stops at the lake (y=" + yy + " c=" + c + ")");
+        if (y === R.route9) { assert.strictEqual(g.grid[yy][c], ROAD, "Route 9 y=" + yy + " c=" + c + " not road"); continue; }
+        if (inLake(c)) assert.strictEqual(g.grid[yy][c], WATER, "N/S road stops at the lake (y=" + yy + " c=" + c + ")");
+        else if (c === shoreWalk) assert.strictEqual(g.grid[yy][c], SIDE, "west shore is a walkway (y=" + yy + ")");
+        else if (c >= eastBank) assert.ok(g.grid[yy][c] !== ROAD && g.grid[yy][c] !== SIDE, "no dead-end road/side E of the lake (y=" + yy + " c=" + c + ")");
         else assert.strictEqual(g.grid[yy][c], ROAD, "road y=" + yy + " c=" + c + " not road");
       }
     });

@@ -174,9 +174,12 @@
     // margin covers the rendered span, which reaches a little into each building.
     const underBridge = (r2, c) => SKY.some(sb =>
       c >= sb.x - 2 && c <= sb.x + (sb.w || 1) + 1 && r2 >= sb.y - 3 && r2 <= sb.y + (sb.h || 1) + 2);
+    // …and keep the helipad (5×5 decal + a 1-tile apron) clear too (Ryan).
+    const onPad = (r2, c) => D.helipad &&
+      c >= D.helipad.x - 1 && c <= D.helipad.x + 5 && r2 >= D.helipad.y - 1 && r2 <= D.helipad.y + 5;
     while (out.length < 110 && tries++ < 2600) {
       const c = 1 + Math.floor(rnd() * (COLS - 2)), r2 = 1 + Math.floor(rnd() * (ROWS - 2));
-      let ok = !underBridge(r2, c);
+      let ok = !underBridge(r2, c) && !onPad(r2, c);
       for (let dr = -1; dr <= 1 && ok; dr++) for (let dc = -1; dc <= 1 && ok; dc++)
         if (solid[r2 + dr][c + dc] || !grassy(r2 + dr, c + dc)) ok = false;
       if (ok && !out.some(t => Math.abs(t.c - c) + Math.abs(t.r - r2) < 3)) out.push({ c, r: r2, v: rnd() < 0.5 ? 0 : 1 });
@@ -321,9 +324,27 @@
     g.fillStyle(shade(wall, 0.6), 1); g.fillRect(0, h - 3, w, 3);
     const doorHere = b.side === "s" && s.row === b.door[1] - WALL && b.door[0] >= s.c && b.door[0] < s.c + s.len && s.hgt === 2 && (b.enter || b.lockedMsg);
     const dx = doorHere ? (b.door[0] - s.c) * TILE + 16 : -999;
+    // Glass towers (Sherman, DiMare — photo-matched): the face is a curtain wall,
+    // not punched windows — continuous glazing with vertical mullions, a lighter
+    // sky-reflection band up top, floor lines, and a striped parapet cap.
+    const curtain = b.facade === "glass" || b.facade === "darkglass";
+    if (curtain) {
+      const glassC = b.glass ? hx(b.glass) : 0x9fc4e0, mull = b.accent ? hx(b.accent) : shade(wall, 0.5);
+      g.fillStyle(glassC, 1); g.fillRect(0, 4, w, h - 7);
+      g.fillStyle(shade(glassC, 1.35), 0.85); g.fillRect(0, 4, w, 7);            // sky reflection
+      g.fillStyle(shade(glassC, 0.72), 0.9); g.fillRect(0, h - 10, w, 7);        // ground shade
+      for (let mx = 0; mx <= w; mx += 8) { g.fillStyle(mull, 0.85); g.fillRect(Math.min(mx, w - 1), 4, 1, h - 7); }
+      if (h > 40) { g.fillStyle(mull, 0.7); g.fillRect(0, Math.floor(h / 2), w, 1); } // floor line
+      for (let px = 0; px < w; px += 8) {                                        // striped parapet cap
+        g.fillStyle(px % 16 === 0 ? shade(wall, 1.3) : shade(wall, 0.62), 1); g.fillRect(px, 0, 8, 4);
+      }
+      g.fillStyle(0xffffff, 0.18);                                              // diagonal glint
+      for (let d2 = 0; d2 < 3; d2++) g.fillRect(Math.floor(w * 0.2) + d2 * 14, 5, 4, h - 12);
+    }
     for (let cell = 0; cell < s.len; cell++) {
       const x = cell * TILE;
       if (doorHere && Math.abs(x + 16 - dx) < 24) continue;
+      if (curtain) continue;                                                    // curtain wall already painted
       if (b.kind === "garage") { g.fillStyle(0x14181e, 1); g.fillRect(x + 4, 10, 24, Math.min(12, h - 16)); g.fillStyle(0x2a3038, 1); g.fillRect(x + 4, 10, 24, 3); }
       else if (s.hgt === 2) {
         g.fillStyle(0x16202e, 1); g.fillRect(x + 10, 10, 12, 20);
@@ -455,6 +476,18 @@
     g.lineStyle(3, 0x8b929c, 1);
     [11, 22, 33].forEach((hx) => { g.beginPath(); g.moveTo(hx - 6, 25); g.lineTo(hx - 6, 12); g.lineTo(hx + 6, 12); g.lineTo(hx + 6, 25); g.strokePath(); });
     g.generateTexture("t_bikerack", 44, 30); g.destroy();
+    // lecturer's podium — wooden lectern (slanted top, reading lamp glow, mic)
+    g = scene.make.graphics({ add: false });
+    g.fillStyle(0x000000, 0.25); g.fillEllipse(14, 33, 24, 5);
+    g.fillStyle(0x6a4e30, 1); g.fillRect(7, 12, 14, 20);
+    g.fillStyle(0x54331a, 1); g.fillRect(7, 12, 3, 20); g.fillRect(7, 29, 14, 3);
+    g.fillStyle(0x8a6a44, 1); g.fillRect(2, 5, 24, 8);
+    g.fillStyle(0x9d7c52, 1); g.fillRect(2, 5, 24, 3);
+    g.fillStyle(0x54331a, 1); g.fillRect(2, 12, 24, 2);
+    g.fillStyle(0x2b303c, 1); g.fillRect(20, 1, 2, 5);
+    g.fillStyle(0x14181e, 1); g.fillCircle(21, 1, 2);
+    g.fillStyle(0xf2e2a8, 0.5); g.fillRect(4, 6, 8, 2);
+    g.generateTexture("t_podium", 28, 36); g.destroy();
     // skybridges are drawn as graphics rects in drawBuildings (variable size/orientation)
   }
 
@@ -542,9 +575,9 @@
       });
       const d = doorFor(b);
       if (b.side === "e") scene.add.image(d.x - 22, d.y - 14, "t_canopy").setOrigin(0).setDepth(d.y + 16);
-      const nm = scene.add.text(b.x * TILE + b.w * TILE / 2, b.y * TILE - 6, b.name,
+      const nm = scene.add.text(b.x * TILE + b.w * TILE / 2, b.y * TILE - 6, b.name,   // above skybridges (200000) so names never hide
         { fontFamily: "monospace", fontSize: (b.major ? 12 : 10) + "px", color: "#dfe6f2", backgroundColor: "#0e142099", padding: { x: 4, y: 2 } })
-        .setOrigin(0.5, 1).setAlpha(b.major ? 0.95 : 0.7).setDepth(99998);
+        .setOrigin(0.5, 1).setAlpha(b.major ? 0.95 : 0.7).setDepth(240000);
       if (b.enter || b.lockedMsg) portals.push({ b, x: d.x, y: d.y, w: 70, h: 44 });
     });
     gg.runs.forEach(r2 => {

@@ -43,7 +43,7 @@
   // walk-sheet geometry — one character block in the NPC sheet's layout
   const FRAME_W = 80, FRAME_H = 120;
   const DIRS = ["d", "l", "r", "u"];       // row order (matches scenes.js NPC_DIR)
-  const WALK_SEQ = [0, 1, 2, 1];           // step loop; 1 = standing
+  const WALK_SEQ = [1, 0, 1, 2];           // step loop starting FROM the stand pose (1) — no pop on tap-steps
   const WALK_FPS = 10;                     // player strides at 200 px/s (NPCs 4.5 @ ~37)
 
   // --- helpers ------------------------------------------------------------
