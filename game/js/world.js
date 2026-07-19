@@ -49,7 +49,7 @@
          { label: "Cafe", msg: "You buy a coffee. It is somehow both burnt and weak. Morale +1 anyway." }]) },
     msb: { name: "Medical School Building", kind: "edu", enter: "Lobby", major: true, short: "MED SCHOOL",
       lobby: lob("Medical School Building — lecture halls, the library, and a brutalist amount of concrete. A corridor connects directly into the hospital.",
-        [{ label: "Lecture hall A", msg: "A pharm lecture echoes. Didactics module — coming in a later phase." },
+        [{ label: "Lecture Hall A", slide: { title: "FRANK-STARLING CURVE", sub: "CARDIOLOGY 101 · WEEK 1" }, msg: "The lecturer is mid-slide on preload and afterload. Didactics module — coming in a later phase." },
          { label: "Library", msg: "The stacks smell like 1978. A first-year is asleep on a copy of Kandarpa." },
          { label: "Corridor to UMass Memorial", msg: "Through these doors the med school runs straight into the hospital — clinical years in one commute." }]) },
     ummmc: { name: "UMass Memorial Medical Center", kind: "hospital", enter: "Hospital", major: true, short: "UMASS MEMORIAL" },
@@ -796,6 +796,67 @@
       shades.forEach((c, i) => { g.fillStyle(c, 1); g.fillRect(6, 66 - i * 13, 52, 13); });
       g.fillStyle(0x8a919b, 1); g.fillRect(6, 10, 52, 3);
       g.fillStyle(0x8a919b, 1); g.fillRect(6, 10, 3, 60); g.fillRect(55, 10, 3, 60);
+    });
+    // ---- lecture-hall dressing (Medical School — Lecture Hall A) -------------
+    // padded auditorium seat (blue), origin-bottom; occupied seats draw a student
+    // behind + this seat in front so head/shoulders rise over the seat back.
+    tex("t_seat", 34, 38, (g) => {
+      g.fillStyle(0x000000, 0.18); g.fillEllipse(17, 36, 27, 5);
+      g.fillStyle(0x243748, 1); g.fillRect(3, 24, 4, 11); g.fillRect(27, 24, 4, 11);   // legs
+      g.fillStyle(0x2f4a66, 1); g.fillRect(5, 2, 24, 21);                              // seat back
+      g.fillStyle(0x3c5c80, 1); g.fillRect(5, 2, 24, 4);                               // back highlight
+      g.fillStyle(0x24384d, 1); g.fillRect(5, 19, 24, 4);                              // back/seat crease
+      g.fillStyle(0x3f6188, 1); g.fillRect(2, 21, 30, 10);                             // seat cushion
+      g.fillStyle(0x517aa2, 1); g.fillRect(2, 21, 30, 3);                              // cushion highlight
+      g.fillStyle(0x1e2b3a, 1); g.fillRect(0, 22, 4, 9); g.fillRect(30, 22, 4, 9);     // armrests
+    });
+    // warm wood plank tile for the stage / lecture-hall back wall (tiled)
+    tex("t_woodstage", 48, 24, (g) => {
+      g.fillStyle(0x6f4a2c, 1); g.fillRect(0, 0, 48, 24);
+      g.fillStyle(0x7d5533, 1); g.fillRect(0, 0, 48, 11);
+      g.fillStyle(0x855b38, 1); g.fillRect(4, 1, 30, 9);
+      g.fillStyle(0x633f26, 1); g.fillRect(0, 10, 48, 2); g.fillRect(0, 22, 48, 2);    // plank seams
+      g.fillStyle(0x5a3821, 1); g.fillRect(22, 12, 2, 12); g.fillRect(0, 0, 2, 10);    // vertical joints
+      g.fillStyle(0x8a6240, 0.5); g.fillRect(8, 14, 22, 2);                            // grain
+    });
+    // water cooler (white body + inverted blue bottle), origin-bottom
+    tex("t_watercooler", 22, 42, (g) => {
+      g.fillStyle(0x000000, 0.2); g.fillEllipse(11, 40, 18, 4);
+      g.fillStyle(0xe8ecf1, 1); g.fillRect(3, 14, 16, 26);                             // cabinet
+      g.fillStyle(0xc9ced6, 1); g.fillRect(3, 14, 16, 3);
+      g.fillStyle(0x2b303c, 1); g.fillRect(6, 22, 10, 5);                              // spigot recess
+      g.fillStyle(0x9fb7cc, 1); g.fillRect(8, 24, 2, 4); g.fillStyle(0xd06a56, 1); g.fillRect(12, 24, 2, 4);
+      g.fillStyle(0x8fd1e6, 0.9); g.fillRect(5, 2, 12, 13);                            // water bottle
+      g.fillStyle(0xbfe6f2, 0.9); g.fillRect(6, 3, 4, 10);
+      g.fillStyle(0x6bb6d6, 1); g.fillRect(9, 0, 4, 3);                                // cap
+    });
+    // round wall clock (white face, black rim, hands)
+    tex("t_wallclock", 28, 28, (g) => {
+      g.fillStyle(0x1c2027, 1); g.fillCircle(14, 14, 13);
+      g.fillStyle(0xf4f6f9, 1); g.fillCircle(14, 14, 11);
+      g.fillStyle(0xc9ced6, 1); g.fillCircle(14, 14, 11); g.fillStyle(0xf4f6f9, 1); g.fillCircle(14, 13, 10);
+      g.fillStyle(0x2b303c, 1);
+      g.fillRect(13, 6, 2, 8);        // hour hand (up)
+      g.fillRect(14, 13, 7, 2);       // minute hand (right)
+      g.fillStyle(0xd06a56, 1); g.fillCircle(14, 14, 2);
+    });
+    // wall-mounted monitor / display (dark bezel, blue screen), origin top-left
+    tex("t_wallmonitor", 58, 42, (g) => {
+      g.fillStyle(0x14171d, 1); g.fillRect(0, 0, 58, 38);
+      g.fillStyle(0x2b303c, 1); g.fillRect(2, 2, 54, 34);
+      g.fillStyle(0x1b3a52, 1); g.fillRect(4, 4, 50, 30);                              // screen
+      g.fillStyle(0x2f6f96, 1); g.fillRect(4, 4, 50, 30);
+      g.fillStyle(0x69a7d2, 0.9); g.fillRect(8, 8, 24, 3); g.fillRect(8, 14, 36, 2); g.fillRect(8, 19, 30, 2);
+      g.fillStyle(0xbfe0f2, 0.7); g.fillRect(38, 22, 12, 8);
+      g.fillStyle(0x0c0e12, 1); g.fillRect(26, 38, 6, 4);                              // wall mount
+    });
+    // illuminated green EXIT sign (text is overlaid in-scene), origin center
+    tex("t_exitsign", 46, 20, (g) => {
+      g.fillStyle(0x0a1f12, 1); g.fillRect(0, 0, 46, 20);
+      g.fillStyle(0x12351f, 1); g.fillRect(1, 1, 44, 18);
+      g.fillStyle(0x1f7a3c, 1); g.fillRect(2, 2, 42, 16);
+      g.fillStyle(0x35c463, 0.9); g.fillRect(2, 2, 42, 3);
+      g.fillStyle(0x0c2a16, 1); g.fillRect(2, 16, 42, 2);
     });
   }
 

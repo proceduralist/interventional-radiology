@@ -324,10 +324,10 @@
   // chair drawn over the sprite's legs ≈ seated (audience, students, waiting rooms)
   // one size for EVERY chair (empty or occupied), matched to the 2× cast
   const CHAIR_SCALE = 1.6;
-  function addChair(scene, x, y) {   // an empty chair standing on the floor at (x,y)
-    return scene.add.image(x, y, "t_chair").setScale(CHAIR_SCALE).setOrigin(0.5, 1).setDepth(y);
+  function addChair(scene, x, y, chairKey) {   // an empty seat standing on the floor at (x,y)
+    return scene.add.image(x, y, chairKey || "t_chair").setScale(CHAIR_SCALE).setOrigin(0.5, 1).setDepth(y);
   }
-  function npcSeated(scene, x, y, role, dir, solids) {
+  function npcSeated(scene, x, y, role, dir, solids, chairKey) {
     // The cast sheet is walk-only (no sitting pose), so we fake a convincing sit:
     // the person is drawn BEHIND the chair with their lower legs/feet cropped at
     // the hip, and the chair (seat + back) is drawn IN FRONT — head and shoulders
@@ -340,7 +340,7 @@
       else s.setCrop(0, 0, (s.frame && s.frame.width) || 20, Math.round(((s.frame && s.frame.height) || 28) * 0.66));
     }
     s.setDepth(y);
-    scene.add.image(x, y, "t_chair").setScale(CHAIR_SCALE).setOrigin(0.5, 1).setDepth(y + 1);
+    scene.add.image(x, y, chairKey || "t_chair").setScale(CHAIR_SCALE).setOrigin(0.5, 1).setDepth(y + 1);
     if (solids) { const z = scene.add.zone(x, y - 6, 26, 18); scene.physics.add.existing(z, true); solids.add(z); }
     return s;
   }
@@ -422,6 +422,11 @@
       // NPC cast sheet (user-supplied pack; see game/assets/CREDITS.md).
       // RPG-Maker layout: 8 characters, 3 walk frames × 4 directions each.
       this.load.spritesheet("npcsheet", "assets/npcs.png", { frameWidth: 80, frameHeight: 120 });
+      // material textures (Pixel Art Textures pack — free license); guarded at use
+      // sites so a failed load falls back to the procedural interior textures.
+      this.load.image("tx_wood", "assets/tex/wood_stage.png");
+      this.load.image("tx_floor", "assets/tex/floor_tile.png");
+      this.load.image("tx_carpet", "assets/tex/carpet_aisle.png");
       this.load.on("loaderror", () => {}); // procedural fallback sprites cover a failed load
     },
     create() {
@@ -837,22 +842,96 @@
         const say = (msg) => () => { this.busy = false; root.IRUI.toast(msg, 3400); };
 
         if (theme === "auditorium") {
-          // proper stage: raised apron + projection screen on the back wall; the
-          // lecturer STANDS at a wooden podium facing the house (no walk anim —
-          // the old talk loop cycled walk frames and read as pacing in place).
-          const stage = this.add.graphics().setDepth(4);
-          stage.fillStyle(0x3a3448, 1).fillRect(rx + 10, top + 2, RW2 - 20, 38);
-          stage.fillStyle(0x584f6e, 1).fillRect(rx + 10, top + 2, RW2 - 20, 4);
-          stage.fillStyle(0x241f30, 1).fillRect(rx + 10, top + 38, RW2 - 20, 4);            // stage lip shadow
-          stage.fillStyle(0xdfe6f0, 0.95).fillRect(cx + 46, RY + 8, 170, 32);               // projection screen
-          stage.fillStyle(0x9fc4e0, 0.55).fillRect(cx + 52, RY + 13, 74, 22);               // slide glow
-          npcIdle(this, cx, top + 14, rndChar(), "d");                                      // lecturer, standing
-          this.add.image(cx, top + 36, "t_podium").setOrigin(0.5, 1).setDepth(top + 36);    // lectern in front
-          for (let r = 0; r < 2; r++) for (let c2 = 0; c2 < Math.floor((RW2 - 44) / 40); c2++) {
-            if (Math.random() < 0.72) npcSeated(this, rx + 34 + c2 * 40, top + 66 + r * 34, rndChar(), "u");
+          // A full lecture hall (Medical School — Lecture Hall A): a raised wooden
+          // stage + projection whiteboard, wall monitor + clock, a lecturer at the
+          // podium, two tiered banks of seats split by a carpeted stair aisle, a
+          // packed student cast, water cooler, corner plants + an EXIT sign.
+          const roomH = node.h, woodBot = RY + 100;
+          const lecture = !!p.slide;                                                        // MSB lecture vs Sherman conference
+          const slide = p.slide || { title: p.action === "conference" ? "GRAND ROUNDS" : "TODAY'S LECTURE", sub: "" };
+
+          // theater floor (blue-gray carpet) over the seating area + central aisle
+          this.add.tileSprite(rx, woodBot, RW2, roomH - woodBot, "t_lino").setOrigin(0).setDepth(0.05).setTint(0x5b6478);
+          const aisleHalf = 58, ax = cx - aisleHalf;
+          const carpetKey = this.textures.exists("tx_carpet") ? "tx_carpet" : null;
+          if (carpetKey) this.add.tileSprite(ax, woodBot, aisleHalf * 2, roomH - woodBot, carpetKey).setOrigin(0).setDepth(0.12);
+          const aisle = this.add.graphics().setDepth(0.2);
+          if (!carpetKey) aisle.fillStyle(0x4a3f63, 1).fillRect(ax, woodBot, aisleHalf * 2, roomH - woodBot);
+          aisle.fillStyle(0x574a73, carpetKey ? 0.5 : 1).fillRect(ax, woodBot, aisleHalf * 2, 4);
+          for (let sy = woodBot + 12; sy < roomH - 6; sy += 26) {                            // stair treads down the aisle
+            aisle.fillStyle(0x241b33, 0.55).fillRect(ax + 3, sy, aisleHalf * 2 - 6, 3);
+            aisle.fillStyle(0x7a6aa0, 0.5).fillRect(ax + 3, sy + 3, aisleHalf * 2 - 6, 2);
           }
+
+          // raised wooden stage / back wall
+          this.add.tileSprite(rx, RY, RW2, woodBot - RY, this.textures.exists("tx_wood") ? "tx_wood" : "t_woodstage").setOrigin(0).setDepth(1);
+          const stg = this.add.graphics().setDepth(1.5);
+          stg.fillStyle(0x3a2618, 1).fillRect(rx, woodBot - 6, RW2, 6);                       // stage front lip
+          stg.fillStyle(0x1c0d05, 0.55).fillRect(rx, woodBot, RW2, 4);                        // lip shadow onto the floor
+          K.solid(cx, woodBot - 2, RW2, 12);                                                  // can't walk onto the stage
+
+          // projection whiteboard — the Frank-Starling slide
+          const scW = 236, scH = 92, scX = cx - scW / 2, scY = RY + 6;
+          const board = this.add.graphics().setDepth(4);
+          board.fillStyle(0x161a20, 1).fillRect(scX - 4, scY - 4, scW + 8, scH + 8);          // frame
+          board.fillStyle(0x2b3038, 1).fillRect(scX - 4, scY + scH + 4, scW + 8, 4);          // frame shadow
+          board.fillStyle(0xeef1f5, 1).fillRect(scX, scY, scW, scH);                          // board
+          board.fillStyle(0xf7f9fb, 1).fillRect(scX, scY, scW, 3);
+          const px0 = scX + 40, py0 = scY + scH - 14, plotW = scW - 70, plotH = scH - 46;
+          board.lineStyle(2, 0x39404d, 1);
+          board.beginPath(); board.moveTo(px0, py0 - plotH); board.lineTo(px0, py0); board.lineTo(px0 + plotW, py0); board.strokePath();
+          const curve = (amp, col) => {
+            board.lineStyle(3, col, 1); board.beginPath();
+            for (let i = 0; i <= plotW; i += 5) {
+              const t = i / plotW, yy = py0 - amp * (1 - Math.exp(-3.1 * t));
+              if (i === 0) board.moveTo(px0, yy); else board.lineTo(px0 + i, yy);
+            }
+            board.strokePath();
+          };
+          curve(plotH * 0.9, 0xc0392b);                                                       // normal contractility
+          curve(plotH * 0.55, 0xe0917f);                                                      // depressed contractility
+          const bt = (tx, ty, str, sz, col, opts) => this.add.text(tx, ty, str,
+            Object.assign({ fontFamily: "monospace", fontSize: sz + "px", color: col }, opts || {})).setDepth(5);
+          bt(scX + 10, scY + 8, slide.title, 11, "#1c2027", { fontStyle: "bold" });
+          if (slide.sub) bt(scX + 10, scY + 22, slide.sub, 8, "#5a6472");
+          bt(px0 + plotW - 30, py0 + 3, "EDV →", 8, "#7a8290");
+          bt(scX + 24, scY + 44, "PERF.", 7, "#7a8290").setOrigin(0.5).setAngle(-90);
+
+          // wall monitor (left) + wall clock (right)
+          this.add.image(rx + 58, RY + 14, "t_wallmonitor").setOrigin(0, 0).setDepth(4);
+          this.add.image(rx + RW2 - 30, RY + 30, "t_wallclock").setOrigin(0.5).setDepth(4);
+
+          // lecturer at the podium (right of the screen), facing the house
+          const podX = cx + 148;
+          npcIdle(this, podX, woodBot - 12, lecture ? "attending" : rndChar(), "d");
+          this.add.image(podX, woodBot - 2, "t_podium").setOrigin(0.5, 1).setDepth(woodBot);
+
+          // two tiered seat banks either side of the aisle, packed with students
+          const cols = 4, rows = 4, pitchX = 66, pitchY = 54, seatTop = woodBot + 34, bankW = cols * pitchX;
+          const leftX0 = cx - aisleHalf - bankW + pitchX / 2, rightX0 = cx + aisleHalf + pitchX / 2;
+          for (let r = 0; r < rows; r++) {
+            const sy = seatTop + r * pitchY;
+            for (let c2 = 0; c2 < cols; c2++) {
+              [leftX0 + c2 * pitchX, rightX0 + c2 * pitchX].forEach((sx) => {
+                if (Math.random() < 0.66) npcSeated(this, sx, sy, rndChar(), "u", null, "t_seat");
+                else addChair(this, sx, sy, "t_seat");
+              });
+            }
+          }
+
+          // water cooler on the left wall + a plant in each corner
+          this.add.image(rx + 20, seatTop + 92, "t_watercooler").setOrigin(0.5, 1).setDepth(seatTop + 92);
+          K.solid(rx + 20, seatTop + 86, 22, 16);
+          [[rx + 22, woodBot + 22], [rx + RW2 - 22, woodBot + 22], [rx + 22, roomH - 14], [rx + RW2 - 22, roomH - 14]]
+            .forEach(([pxp, pyp]) => this.add.image(pxp, pyp, "t_plant").setOrigin(0.5, 1).setDepth(pyp));
+
+          // EXIT sign over the doorway down to the foyer
+          this.add.image(cx, roomH - 30, "t_exitsign").setDepth(1e5);
+          this.add.text(cx, roomH - 31, "EXIT", { fontFamily: "monospace", fontSize: "11px", color: "#d7ffe4", fontStyle: "bold" })
+            .setOrigin(0.5).setDepth(1e5 + 1);
+
           const act = p.action === "conference" ? () => Conference.run(this) : say(p.msg || "The talk is mid-slide 47 of 90.");
-          portals.push({ x: cx, y: top + 34, w: RW2 - 30, h: 40, label: p.label, onEnter: act });
+          portals.push({ x: cx, y: woodBot + 10, w: RW2 - 60, h: 44, label: lecture ? "Listen in on the lecture" : p.label, onEnter: act });
         } else if (theme === "cafe") {
           // counter, espresso rig, animated barista, menu board, seated customers
           const bar = this.add.graphics().setDepth(top + 34);
@@ -917,28 +996,63 @@
       nodes.push(hall);
       drawNodeShell(this, hall, solids, { n: roomPois.length ? "open" : false }, 0x41609f, null);
       const hcx = worldW / 2;
-      this.add.image(hcx - 64, hallY + 78, "t_desk").setOrigin(0).setDepth(hallY + 140);
-      const deskBody = this.add.zone(hcx, hallY + 118, 128, 42); this.physics.add.existing(deskBody, true); solids.add(deskBody);
-      npcIdle(this, hcx, hallY + 82, "senior", "d");                                 // front desk
-      [[26, hallY + 44], [worldW - 26, hallY + 44], [26, hallY + HALLH - 18], [worldW - 26, hallY + HALLH - 18]]
+      // light tile floor over the foyer (material pack; falls back to the lino shell)
+      if (this.textures.exists("tx_floor")) this.add.tileSprite(0, hallY, worldW, HALLH, "tx_floor").setOrigin(0).setDepth(0.04);
+
+      // INFO CHECK-IN reception desk, kept LEFT of the central spine so the aisle
+      // from the lecture hall down to the campus exit stays walkable
+      const deskCx = hcx - 168, deskY = hallY + 78, deskW = 208;
+      const desk = this.add.graphics().setDepth(deskY + 52);
+      desk.fillStyle(0x000000, 0.22).fillRect(deskCx - deskW / 2 + 4, deskY + 48, deskW, 8);
+      desk.fillStyle(0x6d5238, 1).fillRect(deskCx - deskW / 2, deskY + 14, deskW, 38);            // front
+      desk.fillStyle(0x9a7a56, 1).fillRect(deskCx - deskW / 2 - 4, deskY, deskW + 8, 16);          // counter top
+      desk.fillStyle(0xb08c62, 1).fillRect(deskCx - deskW / 2 - 4, deskY, deskW + 8, 3);
+      for (let dx = deskCx - deskW / 2 + 12; dx < deskCx + deskW / 2 - 30; dx += 44)
+        desk.fillStyle(0x5d4630, 1).fillRect(dx, deskY + 20, 30, 28);                              // drawer fronts
+      desk.fillStyle(0xeef1f5, 1).fillRect(deskCx - 30, deskY + 22, 60, 24);                       // INFO placard
+      desk.fillStyle(0x9aa0a8, 1).fillRect(deskCx - 30, deskY + 22, 60, 3);
+      this.add.text(deskCx, deskY + 26, "INFO\nCHECK IN", { fontFamily: "monospace", fontSize: "8px", color: "#2b303c", align: "center", lineSpacing: 2 })
+        .setOrigin(0.5, 0).setDepth(deskY + 53);
+      desk.fillStyle(0x2b303c, 1).fillRect(deskCx - deskW / 2 + 10, deskY - 8, 24, 12);            // laptop
+      desk.fillStyle(0x69a7d2, 1).fillRect(deskCx - deskW / 2 + 12, deskY - 6, 20, 8);
+      desk.fillStyle(0xe6c34a, 1).fillEllipse(deskCx + deskW / 2 - 18, deskY + 6, 16, 7);          // stray banana
+      K.solid(deskCx, deskY + 28, deskW + 8, 42);
+      npcIdle(this, deskCx, deskY + 6, "nurse", "d");                                              // receptionist
+
+      // corner plants + a milling visitor
+      [[26, hallY + 42], [worldW - 26, hallY + 42], [26, hallY + HALLH - 16], [worldW - 26, hallY + HALLH - 16]]
         .forEach(([px, py]) => this.add.image(px, py, "t_plant").setOrigin(0.5, 1).setDepth(py));
-      npcPatrol(this, hcx - 180, hallY + 210, "visitor", 360, 0, 10000);
-      if (Math.random() < 0.6) npcSeated(this, hcx - 260, hallY + 150, rndChar(), "r");
-      // exit door (south wall of the hall) → campus
+      npcPatrol(this, hcx + 30, hallY + 214, "visitor", 300, 0, 10000);
+
+      // waiting area on the right — a row of chairs + a side table with a laptop
+      const waitX = hcx + 118;
+      [0, 44, 88].forEach((o) => addChair(this, waitX + o, hallY + 158));
+      const tbl = this.add.graphics().setDepth(hallY + 150);
+      tbl.fillStyle(0x000000, 0.2).fillRect(waitX - 66, hallY + 150, 44, 6);
+      tbl.fillStyle(0x6d5238, 1).fillRect(waitX - 66, hallY + 134, 44, 16);
+      tbl.fillStyle(0x8a744a, 1).fillRect(waitX - 66, hallY + 132, 44, 4);
+      tbl.fillStyle(0x2b303c, 1).fillRect(waitX - 56, hallY + 126, 18, 10);
+      tbl.fillStyle(0x69a7d2, 1).fillRect(waitX - 54, hallY + 128, 14, 7);
+      K.solid(waitX - 44, hallY + 146, 44, 16);
+      if (Math.random() < 0.55) npcSeated(this, waitX + 44, hallY + 158, rndChar(), "d");
+
+      // exit door (south wall of the hall, on the central spine) → campus
       const door = this.add.graphics().setDepth(hallY + HALLH + 4);
       door.fillStyle(0x20262e, 1).fillRect(hcx - 36, hallY + HALLH - 6, 72, 16);
       door.fillStyle(0x2a4a66, 1).fillRect(hcx - 32, hallY + HALLH - 3, 30, 12).fillRect(hcx + 2, hallY + HALLH - 3, 30, 12);
+      label(this, hcx, hallY + HALLH - 20, "EXIT", 9).setAlpha(0.85).setDepth(hallY + HALLH + 5);
       portals.push({ x: hcx, y: hallY + HALLH, w: 90, h: 50, label: "Exit to campus", onEnter: () => this.scene.start("Overworld") });
-      // MSB: stairs up to the library (hard gateway) — a stairwell OPENING in the
-      // hall's north wall at the west end (flush, never free-standing — Ryan)
+
+      // MSB west gateway: ELEVATOR up to the library — recessed bay in the corner
       if (libraryPoi) {
-        this.add.graphics().setDepth(hallY + 58).fillStyle(0x11161f, 1).fillRect(14, hallY + 4, 76, 98)
-          .fillStyle(0x000000, 0.35).fillRect(14, hallY + 98, 76, 4);
-        this.add.image(20, hallY + 24, "t_stairs").setOrigin(0).setDepth(hallY + 60);
-        portals.push({ x: 56, y: hallY + 130, w: 72, h: 60, label: "Stairs up — Library", onEnter: () => this.scene.restart({ id: b.id, floor: "library" }) });
+        this.add.graphics().setDepth(hallY + 58).fillStyle(0x0d1119, 1).fillRect(12, hallY + 2, 74, 96)
+          .fillStyle(0x000000, 0.35).fillRect(12, hallY + 96, 74, 4);
+        this.add.image(18, hallY + 18, "t_elev").setOrigin(0).setDepth(hallY + 60);
+        this.add.text(11, hallY + HALLH / 2, "ELEVATOR", { fontFamily: "monospace", fontSize: "11px", color: "#8a93a3" })
+          .setOrigin(0.5).setAngle(-90).setDepth(hallY + 40);
+        portals.push({ x: 50, y: hallY + 122, w: 76, h: 58, label: "Elevator — Library / upper floors", onEnter: () => this.scene.restart({ id: b.id, floor: "library" }) });
       }
-      // MSB: corridor to UMass Memorial (hard gateway) — a recessed corridor
-      // MOUTH in the hall's north wall at the east end, doors set into the wall
+      // MSB east gateway: corridor to UMass Memorial — a recessed corridor mouth
       if (corridorPoi) {
         const dg = this.add.graphics().setDepth(hallY + 60);
         dg.fillStyle(0x11161f, 1).fillRect(worldW - 100, hallY + 4, 92, 100);                 // corridor mouth
@@ -946,6 +1060,8 @@
         dg.fillStyle(0x2a4a66, 1).fillRect(worldW - 90, hallY + 14, 34, 64).fillRect(worldW - 50, hallY + 14, 34, 64);
         dg.fillStyle(0x9fc4e0, 0.75).fillRect(worldW - 84, hallY + 20, 6, 22).fillRect(worldW - 44, hallY + 20, 6, 22);
         dg.fillStyle(0x000000, 0.35).fillRect(worldW - 100, hallY + 100, 92, 4);              // threshold shadow
+        this.add.text(worldW - 11, hallY + HALLH / 2, "UMASS MEMORIAL", { fontFamily: "monospace", fontSize: "11px", color: "#8a93a3" })
+          .setOrigin(0.5).setAngle(90).setDepth(hallY + 40);
         label(this, worldW - 54, hallY + 116, "TO UMASS MEMORIAL →", 9).setAlpha(0.8).setDepth(hallY + 118);
         portals.push({ x: worldW - 54, y: hallY + 96, w: 110, h: 60, label: "Corridor to UMass Memorial", onEnter: () => { S.lastDoor = null; this.scene.start("Hospital", { floor: "1" }); } });
       }
