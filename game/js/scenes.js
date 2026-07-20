@@ -544,9 +544,10 @@
       if (RD) {
         const CAR_TINTS = [0xd05a4a, 0x4a7ad0, 0xd8b84a, 0x9aa4b0, 0x4aa06a, 0xcfd4da, 0x8a6ad0];
         const lane = 0.62 * TILE;              // right-hand traffic, one lane each way
-        // rightPx (horizontal cars): east travel limit. North/South roads now
-        // dead-end at the lake, so their cars turn back at the shore instead of
-        // driving over open water; Route 9 keeps rightPx null → crosses the bridge.
+        // rightPx (horizontal cars): east travel limit + westbound entry point.
+        // North/South roads dead-end at the Lake Ave crossing (lake beyond), so
+        // their westbound cars enter/wrap ON the asphalt at that crossing instead
+        // of over the water; Route 9 keeps rightPx null → crosses the bridge.
         const mkCar = (horiz, center, dir, slot, rightPx) => {
           const tint = CAR_TINTS[(Math.random() * CAR_TINTS.length) | 0];
           let x, y;
@@ -564,13 +565,16 @@
           this._cars.push(c);
           return c;
         };
-        const shoreX = (RD.water && RD.water.length ? RD.water[0] : W.COLS) * TILE - 4;  // west edge of the lake
+        // Westbound entry/wrap point: on the asphalt just W of the Lake Ave crossing
+        // (NOT the shore walkway), so cars never appear to drive out of the sidewalk.
+        const westEntryX = ((RD.lakeAve != null ? RD.lakeAve - 1
+                             : (RD.water && RD.water.length ? RD.water[0] : W.COLS)) - 0.5) * TILE;
         // N/S roads dead-end at the lake: EASTBOUND cars turn N/S onto Lake Ave
-        // (waiting out any traffic at the junction) and exit at the map edge,
-        // then loop back onto their home road; WESTBOUND cars enter at the shore
-        // (as if they'd just turned in) and cruise west. Route 9 keeps the bridge.
+        // (waiting out any traffic at the junction) and exit at the map edge, then
+        // loop back onto their home road; WESTBOUND cars enter at the Lake Ave
+        // crossing (as if they'd just turned off it) and cruise west. Route 9 bridges.
         [RD.north, RD.south].forEach(cy => [1, -1].forEach(dir => [0, 1].forEach(slot => {
-          const c = mkCar(true, cy, dir, slot, dir < 0 ? shoreX : null);
+          const c = mkCar(true, cy, dir, slot, dir < 0 ? westEntryX : null);
           if (dir > 0) {
             c.turnCol = RD.lakeAve; c.lanePx = lane;
             c.homeY = cy * TILE + TILE / 2 + lane;
@@ -1043,26 +1047,30 @@
       label(this, hcx, hallY + HALLH - 20, "EXIT", 9).setAlpha(0.85).setDepth(hallY + HALLH + 5);
       portals.push({ x: hcx, y: hallY + HALLH, w: 90, h: 50, label: "Exit to campus", onEnter: () => this.scene.start("Overworld") });
 
-      // MSB west gateway: ELEVATOR up to the library — recessed bay in the corner
+      // MSB WEST gateway: an elevator OPENING in the west wall — no car/doors
+      // (Ryan). Walk into the recess under the bright ELEVATOR sign to ride up.
       if (libraryPoi) {
-        this.add.graphics().setDepth(hallY + 58).fillStyle(0x0d1119, 1).fillRect(12, hallY + 2, 74, 96)
-          .fillStyle(0x000000, 0.35).fillRect(12, hallY + 96, 74, 4);
-        this.add.image(18, hallY + 18, "t_elev").setOrigin(0).setDepth(hallY + 60);
-        this.add.text(11, hallY + HALLH / 2, "ELEVATOR", { fontFamily: "monospace", fontSize: "11px", color: "#8a93a3" })
-          .setOrigin(0.5).setAngle(-90).setDepth(hallY + 40);
+        const eg = this.add.graphics().setDepth(hallY + 58);
+        eg.fillStyle(0x0c111a, 1).fillRect(12, hallY + 2, 74, 96);            // recessed shaft opening
+        eg.fillStyle(0x18202c, 1).fillRect(18, hallY + 8, 62, 84);           // inner back wall
+        eg.fillStyle(0x2a3340, 1).fillRect(18, hallY + 8, 62, 3);            // lintel highlight
+        eg.fillStyle(0x69d2e7, 1).fillRect(78, hallY + 42, 4, 7);           // call-button light
+        eg.fillStyle(0x000000, 0.4).fillRect(12, hallY + 96, 74, 5);        // threshold shadow
+        this.add.text(26, hallY + HALLH / 2, "ELEVATOR", { fontFamily: "monospace", fontSize: "12px", color: "#ffe08a", backgroundColor: "#0b1220ee", padding: { x: 6, y: 3 } })
+          .setOrigin(0.5).setAngle(-90).setDepth(hallY + 62);
         portals.push({ x: 50, y: hallY + 122, w: 76, h: 58, label: "Elevator — Library / upper floors", onEnter: () => this.scene.restart({ id: b.id, floor: "library" }) });
       }
-      // MSB east gateway: corridor to UMass Memorial — a recessed corridor mouth
+      // MSB EAST gateway: an open corridor MOUTH in the east wall — no doors
+      // (Ryan). Walk into it under the bright UMASS MEMORIAL sign to cross over.
       if (corridorPoi) {
         const dg = this.add.graphics().setDepth(hallY + 60);
-        dg.fillStyle(0x11161f, 1).fillRect(worldW - 100, hallY + 4, 92, 100);                 // corridor mouth
-        dg.fillStyle(0x20262e, 1).fillRect(worldW - 96, hallY + 8, 84, 76);                   // door frame
-        dg.fillStyle(0x2a4a66, 1).fillRect(worldW - 90, hallY + 14, 34, 64).fillRect(worldW - 50, hallY + 14, 34, 64);
-        dg.fillStyle(0x9fc4e0, 0.75).fillRect(worldW - 84, hallY + 20, 6, 22).fillRect(worldW - 44, hallY + 20, 6, 22);
-        dg.fillStyle(0x000000, 0.35).fillRect(worldW - 100, hallY + 100, 92, 4);              // threshold shadow
-        this.add.text(worldW - 11, hallY + HALLH / 2, "UMASS MEMORIAL", { fontFamily: "monospace", fontSize: "11px", color: "#8a93a3" })
-          .setOrigin(0.5).setAngle(90).setDepth(hallY + 40);
-        label(this, worldW - 54, hallY + 116, "TO UMASS MEMORIAL →", 9).setAlpha(0.8).setDepth(hallY + 118);
+        dg.fillStyle(0x0c111a, 1).fillRect(worldW - 100, hallY + 4, 92, 100);                 // corridor opening
+        dg.fillStyle(0x18202c, 1).fillRect(worldW - 92, hallY + 10, 84, 86);                  // receding corridor walls
+        dg.fillStyle(0x232c3a, 1).fillRect(worldW - 92, hallY + 10, 84, 3);                   // lintel
+        dg.fillStyle(0x2a3340, 1).fillRect(worldW - 60, hallY + 10, 4, 86);                   // vanishing-point seam
+        dg.fillStyle(0x000000, 0.4).fillRect(worldW - 100, hallY + 100, 92, 5);               // threshold shadow
+        this.add.text(worldW - 26, hallY + HALLH / 2, "UMASS MEMORIAL", { fontFamily: "monospace", fontSize: "12px", color: "#ffe08a", backgroundColor: "#0b1220ee", padding: { x: 6, y: 3 } })
+          .setOrigin(0.5).setAngle(90).setDepth(hallY + 62);
         portals.push({ x: worldW - 54, y: hallY + 96, w: 110, h: 60, label: "Corridor to UMass Memorial", onEnter: () => { S.lastDoor = null; this.scene.start("Hospital", { floor: "1" }); } });
       }
 
@@ -1210,13 +1218,18 @@
       //     never free-standing on the floor (Ryan). ------------------------
       const portals = [];
       const bays = this.add.graphics().setDepth(1.5);
-      bays.fillStyle(0x11161f, 1).fillRect(202, 146, 76, 88);   // elevator shaft bay
-      bays.fillStyle(0x11161f, 1).fillRect(672, 146, 80, 88);   // stairwell bay
-      bays.fillStyle(0x000000, 0.35).fillRect(202, 232, 76, 4).fillRect(672, 232, 80, 4); // threshold shadow
-      this.add.image(210, 154, "t_elev").setOrigin(0).setDepth(2);
-      label(this, 240, 246, "ELEVATOR", 9).setAlpha(0.6).setDepth(2);
+      // elevator = an OPENING in the north wall (no car/doors — Ryan); the stairs
+      // stay visible. Both sit in recesses under bright, high-contrast signs.
+      bays.fillStyle(0x0c111a, 1).fillRect(202, 146, 76, 90);              // elevator opening
+      bays.fillStyle(0x18202c, 1).fillRect(206, 152, 68, 76);             // inner shaft back
+      bays.fillStyle(0x2a3340, 1).fillRect(206, 150, 68, 3);              // lintel
+      bays.fillStyle(0x69d2e7, 1).fillRect(270, 176, 4, 7);              // call-button light
+      bays.fillStyle(0x11161f, 1).fillRect(672, 146, 80, 88);            // stairwell recess
+      bays.fillStyle(0x000000, 0.4).fillRect(202, 232, 76, 5).fillRect(672, 232, 80, 4); // threshold shadows
       this.add.image(680, 154, "t_stairs").setOrigin(0).setDepth(2);
-      label(this, 712, 246, "STAIRS", 9).setAlpha(0.6).setDepth(2);
+      const signStyle = { color: "#ffe08a", backgroundColor: "#0b1220ee", padding: { x: 6, y: 3 } };
+      label(this, 240, 250, "ELEVATOR", 10, signStyle).setDepth(6);
+      label(this, 712, 250, "STAIRS", 10, signStyle).setDepth(6);
       const idx = FLOOR_ORDER.indexOf(floor);
       const go = (f) => this.scene.restart({ floor: f });
       portals.push({ x: 240, y: 262, w: 70, h: 40, label: "Elevator", onEnter: () => {

@@ -119,14 +119,18 @@ for bid, b in BLD.items():
 
 # labels object matches scenes.js Overworld: greens/lots [x,y,name], streets [x,y,angle,name], signs [x,y,text]
 labels = {
-    "greens": [[WATER[1]-1, 40, "Lake Quinsigamond"], [22, 21, "The Quad"], [22, 27, "S. Quad"]],
+    # Lake label sits on the CENTRE water column so it never overlaps the shore
+    # walkway or Lake Ave (Ryan). The Quad labels stay on their lawns.
+    "greens": [[WATER[len(WATER)//2], 40, "Lake Quinsigamond"], [22, 21, "The Quad"], [22, 27, "S. Quad"]],
     "lots": [],
-    "streets": [                       # kept clear of each other: vertical names
-        [PLANTATION, 5, -90, "Plantation St"],   # sit N of the north road; horizontal
-        [LAKE_AVE, 5, -90, "Lake Ave"],          # names sit E of Plantation's sidewalk
-        [8, ROUTE9 - 2, 0, "Route 9"],
-        [8, NORTH_ROAD - 2, 0, "North Rd"],
-        [8, SOUTH_ROAD - 2, 0, "South Rd"],
+    # Road names ride ON their asphalt: horizontal names on the road's centre row,
+    # vertical names at the top of their column. Nothing sits on a sidewalk. (Ryan)
+    "streets": [
+        [PLANTATION, 5, -90, "Plantation St"],
+        [LAKE_AVE, 5, -90, "Lake Ave"],
+        [8, ROUTE9, 0, "Route 9"],
+        [8, NORTH_ROAD, 0, "North Rd"],
+        [8, SOUTH_ROAD, 0, "South Rd"],
     ],
     "signs": [],
 }
